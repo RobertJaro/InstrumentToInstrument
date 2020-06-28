@@ -16,8 +16,8 @@ class GeneratorAB(nn.Module):
 
     def forward(self, images):
         # reconstruct an image
-        x = self.encoder(images)
-        images_recon = self.decoder(x)
+        x, skip_connections = self.encoder(images)
+        images_recon = self.decoder(x, skip_connections)
         return images_recon
 
 
@@ -32,10 +32,10 @@ class GeneratorBA(nn.Module):
 
     def forward(self, images, noise):
         # reconstruct an image
-        x = self.encoder(images)
+        x, skip_connections = self.encoder(images)
         x = torch.cat((x, noise), 1)
         x = self.merger(x)
-        images_recon = self.decoder(x)
+        images_recon = self.decoder(x, skip_connections)
         return images_recon
 
 
@@ -135,26 +135,35 @@ class Encoder(nn.Module):
         self.output_dim = dim
 
     def forward(self, x):
-        return self.model(x)
+        skip_connections = []
+        for down in self.model[:-1]:
+            x = down(x)
+            skip_connections.append(x)
+        x = self.model[-1](x)
+        return x, skip_connections
 
 
 class Decoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, res_norm='in', activ='relu', pad_type='zero'):
         super().__init__()
-
         model = []
-        # residual blocks
         model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
         # upsampling blocks
         for i in range(n_upsample):
-            model += [nn.Upsample(scale_factor=2),
-                      Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='in', activation=activ, pad_type=pad_type)]
+            model += [
+                Conv2dBlock(dim, dim // 2, 4, 2, 1, norm='in', activation=activ, pad_type=pad_type, transpose=True)]
             dim //= 2
         model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
         self.model = nn.Sequential(*model)
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, x, skip_connections):
+        x = self.model[0](x)
+        for up in self.model[1:]:
+            if len(skip_connections) > 0:
+                skip = skip_connections.pop(-1)
+                x += skip
+            x = up(x)
+        return x
 
 
 class ResBlocks(nn.Module):
@@ -187,11 +196,13 @@ class ResBlock(nn.Module):
 
 class Conv2dBlock(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size, stride,
-                 padding=0, norm='none', activation='relu', pad_type='zero'):
-        super(Conv2dBlock, self).__init__()
+                 padding=0, norm='none', activation='relu', pad_type='zero', transpose=False):
+        super().__init__()
         self.use_bias = True
         # initialize padding
-        if pad_type == 'reflect':
+        if transpose:
+            self.pad = nn.ZeroPad2d(0)
+        elif pad_type == 'reflect':
             self.pad = nn.ReflectionPad2d(padding)
         elif pad_type == 'replicate':
             self.pad = nn.ReplicationPad2d(padding)
@@ -218,13 +229,13 @@ class Conv2dBlock(nn.Module):
 
         # initialize activation
         if activation == 'relu':
-            self.activation = nn.ReLU(inplace=True)
+            self.activation = nn.ReLU(inplace=False)
         elif activation == 'lrelu':
-            self.activation = nn.LeakyReLU(0.2, inplace=True)
+            self.activation = nn.LeakyReLU(0.2, inplace=False)
         elif activation == 'prelu':
             self.activation = nn.PReLU()
         elif activation == 'selu':
-            self.activation = nn.SELU(inplace=True)
+            self.activation = nn.SELU(inplace=False)
         elif activation == 'tanh':
             self.activation = nn.Tanh()
         elif activation == 'none':
@@ -236,7 +247,8 @@ class Conv2dBlock(nn.Module):
         if norm == 'sn':
             self.conv = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
         else:
-            self.conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
+            self.conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias) if not transpose \
+                else nn.ConvTranspose2d(input_dim, output_dim, kernel_size, stride, padding=padding, bias=self.use_bias)
 
     def forward(self, x):
         x = self.conv(self.pad(x))

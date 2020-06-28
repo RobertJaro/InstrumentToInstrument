@@ -1,5 +1,7 @@
 import logging
 import os
+import time
+from itertools import cycle
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -9,9 +11,9 @@ from torch.utils.data import DataLoader
 from iti.data.dataset import KSODataset, StorageDataset
 from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer
+from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_v2"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -31,8 +33,8 @@ start_it = trainer.resume(base_dir)
 q1_dataset = StorageDataset(KSODataset("/gss/r.jarolim/data/kso_general/quality1"), '/gss/r.jarolim/data/converted/iti/kso_q1')
 q2_dataset = StorageDataset(KSODataset("/gss/r.jarolim/data/kso_general/quality2"), '/gss/r.jarolim/data/converted/iti/kso_q2')
 
-q1_iterator = iter(DataLoader(q1_dataset, batch_size=1, shuffle=True, num_workers=8))
-q2_iterator = iter(DataLoader(q2_dataset, batch_size=1, shuffle=True, num_workers=8))
+q1_iterator = loop(DataLoader(q1_dataset, batch_size=1, shuffle=True, num_workers=8))
+q2_iterator = loop(DataLoader(q2_dataset, batch_size=1, shuffle=True, num_workers=8))
 
 # Init Plot Callbacks
 history = HistoryCallback(trainer, base_dir)
@@ -55,6 +57,7 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
 for it in range(start_it, int(1e8)):
     x_a, x_b = next(q1_iterator), next(q2_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
+    end = time.time()
     #
     trainer.discriminator_update(x_a, x_b)
     trainer.generator_update(x_a, x_b)

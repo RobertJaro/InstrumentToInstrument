@@ -114,8 +114,8 @@ class Trainer(nn.Module):
         self.loss_gen_aba_noise = self.recon_criterion(n_aba, n_a)
         self.loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
         # total loss
-        self.loss_gen_total = 10 * (self.loss_gen_a_identity + self.loss_gen_b_identity) + \
-                              10 * (self.loss_gen_a_translate + self.loss_gen_b_translate) + \
+        self.loss_gen_total = 0 * (self.loss_gen_a_identity + self.loss_gen_b_identity) + \
+                              0 * (self.loss_gen_a_translate + self.loss_gen_b_translate) + \
                               self.loss_gen_adv_a + self.loss_gen_adv_b + \
                               self.loss_gen_a_content + self.loss_gen_b_content + \
                               self.loss_gen_a_identity_content + self.loss_gen_b_identity_content +\
@@ -146,11 +146,11 @@ class Trainer(nn.Module):
             return 0
         last_model_name = model_names[-1]
         state_dict = torch.load(last_model_name)
-        self.gen_a.load_state_dict(state_dict['a'])
-        self.gen_b.load_state_dict(state_dict['b'])
+        self.gen_ab.load_state_dict(state_dict['a'])
+        self.gen_ba.load_state_dict(state_dict['b'])
         iterations = int(last_model_name[-11:-3])
         # Load discriminators
-        model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'disc_*.pt')))
+        model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'dis_*.pt')))
         if len(model_names) == 0:
             return 0
         last_model_name = model_names[-1]
@@ -169,7 +169,7 @@ class Trainer(nn.Module):
         gen_name = os.path.join(checkpoint_dir, 'gen_%08d.pt' % (iterations + 1))
         dis_name = os.path.join(checkpoint_dir, 'dis_%08d.pt' % (iterations + 1))
         opt_name = os.path.join(checkpoint_dir, 'optimizer.pt')
-        torch.save({'a': self.gen_a.state_dict(), 'b': self.gen_b.state_dict()}, gen_name)
+        torch.save({'a': self.gen_ab.state_dict(), 'b': self.gen_ba.state_dict()}, gen_name)
         torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
         torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
 
@@ -178,3 +178,13 @@ def convertSet(data_set, store_path):
     loader = DataLoader(data_set, batch_size=1, shuffle=False, num_workers=16)
     for i, sample in enumerate(loader):
         np.save(os.path.join(store_path, '%d.npy' % i), sample[0])
+
+def loop(iterable):
+    it = iterable.__iter__()
+
+    while True:
+        try:
+            yield it.next()
+        except StopIteration:
+            it = iterable.__iter__()
+            yield it.next()
