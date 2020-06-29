@@ -286,6 +286,7 @@ class HistoryCallback(Callback):
                      'loss_gen_a_identity_noise': [],
                      'loss_dis_a': [],
                      'loss_dis_b': [],
+                     'loss_gen_diversity': []
                      }
         if os.path.exists(self.history_path):
             with open(self.history_path, 'rb') as f:
@@ -308,6 +309,7 @@ class HistoryCallback(Callback):
         self.loss['loss_gen_a_identity_noise'] += [self.trainer.loss_gen_a_identity_noise.cpu().detach().numpy()]
         self.loss['loss_dis_a'] += [self.trainer.loss_dis_a.cpu().detach().numpy()]
         self.loss['loss_dis_b'] += [self.trainer.loss_dis_b.cpu().detach().numpy()]
+        self.loss['loss_gen_diversity'] += [self.trainer.loss_gen_diversity.cpu().detach().numpy()]
         if (iteration + 1) % 100 == 0:
             self.plotAdversarial()
             self.plotContent()
@@ -334,6 +336,7 @@ class HistoryCallback(Callback):
         plt.plot(self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
         plt.plot(self.loss['loss_gen_ba_noise'], label='Noise BA')
         plt.plot(self.loss['loss_gen_aba_noise'], label='Noise ABA')
+        plt.plot(self.loss['loss_gen_diversity'], label='Diversity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_content.jpg"), dpi=100)
         plt.close()

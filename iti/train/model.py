@@ -7,36 +7,82 @@ from torch.nn.utils.spectral_norm import SpectralNorm
 ########################## Generator ##################################
 
 class GeneratorAB(nn.Module):
-    def __init__(self, input_dim, output_dim, n_downsample, n_upsample):
+    def __init__(self, input_dim, output_dim, n_downsample, n_upsample, dim=64, n_res=9,
+                 norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
         super().__init__()
+        ##################### Encoder #####################
+        self.down_blocks = []
+        self.down_blocks += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        for i in range(n_downsample):
+            self.down_blocks += [DownBlock(dim, 2 * dim, norm=norm, activation=activ, pad_type=pad_type)]
+            dim *= 2
+        ##################### Transformer #####################
+        self.res_blocks = ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)
+        ##################### Decoder #####################
+        self.up_blocks = []
+        for i in range(n_upsample):
+            self.up_blocks += [UpBlock(dim, dim // 2, norm='in', activation=activ, pad_type=pad_type)]
+            dim //= 2
+        self.up_blocks += [
+            Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
 
-        self.encoder = Encoder(n_downsample, 4, input_dim, 64, 'in', 'relu', pad_type='reflect')
-        self.decoder = Decoder(n_upsample, 4, self.encoder.output_dim, output_dim, res_norm='in', activ='relu',
-                               pad_type='reflect')
+        self.model = nn.Sequential(*self.down_blocks, self.res_blocks, *self.up_blocks)
 
-    def forward(self, images):
-        # reconstruct an image
-        x, skip_connections = self.encoder(images)
-        images_recon = self.decoder(x, skip_connections)
-        return images_recon
+    def forward(self, x):
+        # encode
+        skip_connections = []
+        for down in self.down_blocks:
+            x = down(x)
+            skip_connections.append(x)
+        # transform
+        x = self.res_blocks(x)
+        # decode
+        for up in self.up_blocks:
+            if len(skip_connections) > 0:
+                x += skip_connections.pop(-1)
+            x = up(x)
+        return x
 
 
 class GeneratorBA(nn.Module):
-    def __init__(self, input_dim, output_dim, noise_dim, n_downsample, n_upsample):
+    def __init__(self, input_dim, noise_dim, output_dim, n_downsample, n_upsample, dim=64, n_res=9,
+                 norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
         super().__init__()
-        self.encoder = Encoder(n_downsample, 4, input_dim, 64, 'in', 'relu', pad_type='reflect')
-        self.decoder = Decoder(n_upsample, 4, self.encoder.output_dim, output_dim, res_norm='in',
-                               activ='relu', pad_type='reflect')
-        self.merger = Conv2dBlock(self.encoder.output_dim + noise_dim, self.encoder.output_dim, 1, 1, 0,
-                                  activation='relu')
+        i_dim = int(dim / 2 ** (1 + n_downsample))
+        self.down_blocks = []
+        self.down_blocks += [Conv2dBlock(input_dim, i_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        for i in range(n_downsample):
+            self.down_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
+            i_dim *= 2
+
+        n_dim = int(dim / 2 ** (1 - n_upsample))
+        self.transform_blocks = []
+        self.transform_blocks += [
+            Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        self.transform_blocks += [ResBlocks(n_res, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
+
+        self.up_blocks = []
+        for i in range(n_upsample):
+            self.up_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
+            n_dim //= 2
+
+        self.merge_blocks = []
+        self.merge_blocks += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
+        self.merge_blocks += [
+            Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
+
+        self.model = nn.Sequential(*self.down_blocks, *self.transform_blocks, *self.up_blocks, *self.merge_blocks)
+        self.down_blocks = nn.Sequential(*self.down_blocks)
+        self.transform_blocks = nn.Sequential(*self.transform_blocks)
+        self.up_blocks = nn.Sequential(*self.up_blocks)
+        self.merge_blocks = nn.Sequential(*self.merge_blocks)
 
     def forward(self, images, noise):
-        # reconstruct an image
-        x, skip_connections = self.encoder(images)
-        x = torch.cat((x, noise), 1)
-        x = self.merger(x)
-        images_recon = self.decoder(x, skip_connections)
-        return images_recon
+        x = self.down_blocks(images)
+        y = self.transform_blocks(noise)
+        y = self.up_blocks(y)
+        x = torch.cat([x, y], 1)
+        return self.merge_blocks(x)
 
 
 class Discriminator(nn.Module):
@@ -88,17 +134,17 @@ class Discriminator(nn.Module):
         return loss
 
     def calc_content_loss(self, input_real, input_fake):
-        loss = 0
+        loss = []
         for model in self.cnns:
             x = input_real
             y = input_fake
             for layer in model[:-1]:
                 x = layer(x)
                 y = layer(y)
-                loss += torch.mean(torch.abs(x - y))
+                loss.append(torch.mean(torch.abs(x - y), [1, 2, 3]))
             input_real = self.downsample(input_real)
             input_fake = self.downsample(input_fake)
-        return loss
+        return torch.mean(torch.stack(loss, 1), 1)
 
 
 ########################## Encoder / Decoder ##########################
@@ -106,6 +152,7 @@ class Discriminator(nn.Module):
 class NoiseEstimator(nn.Module):
     def __init__(self, input_dim, n_downsample, dim, noise_dim, norm='in', activ='relu', pad_type='reflect'):
         super().__init__()
+        assert n_downsample >= 2, 'The minimum noise depth is 2 but found %d' % n_downsample
         self.model = []
         self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
         for i in range(2):
@@ -120,49 +167,46 @@ class NoiseEstimator(nn.Module):
         return self.model(x)
 
 
-class Encoder(nn.Module):
-    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
+class DownBlock(nn.Module):
+    def __init__(self, input_dim, dim, norm='in', activation='relu', pad_type='reflect'):
         super().__init__()
-        self.model = []
-        self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
-        # downsampling blocks
-        for i in range(n_downsample):
-            self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
-            dim *= 2
-        # residual blocks
-        self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model = nn.Sequential(*self.model)
-        self.output_dim = dim
+
+        self.conv1 = Conv2dBlock(input_dim, dim, 3, 2, 1, norm, activation, pad_type)
+        self.conv2 = Conv2dBlock(dim, dim, 3, 1, 1, norm, 'none', pad_type)
+        self.shortcut_pool = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
+        self.shortcut_conv = Conv2dBlock(input_dim, dim, 1, 1, 0, norm, 'none', pad_type)
+        self.activation = nn.ReLU(inplace=False)
 
     def forward(self, x):
-        skip_connections = []
-        for down in self.model[:-1]:
-            x = down(x)
-            skip_connections.append(x)
-        x = self.model[-1](x)
-        return x, skip_connections
+        shortcut = self.shortcut_pool(x)
+        shortcut = self.shortcut_conv(shortcut)
+
+        x = self.conv1(x)
+        x = self.conv2(x)
+
+        x += shortcut
+        x = self.activation(x)
+        return x
 
 
-class Decoder(nn.Module):
-    def __init__(self, n_upsample, n_res, dim, output_dim, res_norm='in', activ='relu', pad_type='zero'):
+class UpBlock(nn.Module):
+    def __init__(self, input_dim, dim, norm='in', activation='relu', pad_type='reflect'):
         super().__init__()
-        model = []
-        model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
-        # upsampling blocks
-        for i in range(n_upsample):
-            model += [
-                Conv2dBlock(dim, dim // 2, 4, 2, 1, norm='in', activation=activ, pad_type=pad_type, transpose=True)]
-            dim //= 2
-        model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
-        self.model = nn.Sequential(*model)
 
-    def forward(self, x, skip_connections):
-        x = self.model[0](x)
-        for up in self.model[1:]:
-            if len(skip_connections) > 0:
-                skip = skip_connections.pop(-1)
-                x += skip
-            x = up(x)
+        self.conv1 = Conv2dBlock(input_dim, input_dim, 3, 1, 1, norm, activation, pad_type)
+        self.conv2 = Conv2dBlock(input_dim, dim, 4, 2, 1, norm, 'none', pad_type, transpose=True)
+        self.shortcut_up = nn.UpsamplingNearest2d(scale_factor=2)
+        self.shortcut_conv = Conv2dBlock(input_dim, dim, 1, 1, 0, norm, 'none', pad_type)
+        self.activation = nn.ReLU(inplace=False)
+
+    def forward(self, x):
+        shortcut = self.shortcut_up(x)
+        shortcut = self.shortcut_conv(shortcut)
+
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x += shortcut
+        x = self.activation(x)
         return x
 
 
@@ -182,16 +226,17 @@ class ResBlock(nn.Module):
     def __init__(self, dim, norm='in', activation='relu', pad_type='zero'):
         super().__init__()
 
-        model = []
-        model += [Conv2dBlock(dim, dim, 3, 1, 1, norm=norm, activation=activation, pad_type=pad_type)]
-        model += [Conv2dBlock(dim, dim, 3, 1, 1, norm=norm, activation='none', pad_type=pad_type)]
-        self.model = nn.Sequential(*model)
+        self.conv1 = Conv2dBlock(dim, dim, 3, 1, 1, norm, activation, pad_type)
+        self.conv2 = Conv2dBlock(dim, dim, 3, 1, 1, norm, 'none', pad_type)
+        self.activation = nn.ReLU(inplace=False)
 
     def forward(self, x):
         residual = x
-        out = self.model(x)
-        out += residual
-        return out
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x += residual
+        x = self.activation(x)
+        return x
 
 
 class Conv2dBlock(nn.Module):

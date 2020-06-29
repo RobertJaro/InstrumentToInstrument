@@ -83,7 +83,7 @@ class KSODataset(BaseDataset):
                    MapToDataEditor(),
                    PyramidRescaleEditor(1024 / resolution),
                    ImageNormalizeEditor(),
-                   ReshapeEditor((1, 256, 256))]
+                   ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
 
 
