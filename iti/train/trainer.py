@@ -234,6 +234,7 @@ class Trainer(nn.Module):
         state_dict = torch.load(last_model_name)
         self.gen_ab.load_state_dict(state_dict['a'])
         self.gen_ba.load_state_dict(state_dict['b'])
+        self.estimator_noise.load_state_dict(state_dict['e'])
         iterations = int(last_model_name[-11:-3])
         # Load discriminators
         model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'dis_*.pt')))
@@ -255,7 +256,9 @@ class Trainer(nn.Module):
         gen_name = os.path.join(checkpoint_dir, 'gen_%08d.pt' % (iterations + 1))
         dis_name = os.path.join(checkpoint_dir, 'dis_%08d.pt' % (iterations + 1))
         opt_name = os.path.join(checkpoint_dir, 'optimizer.pt')
-        torch.save({'a': self.gen_ab.state_dict(), 'b': self.gen_ba.state_dict()}, gen_name)
+        torch.save({'a': self.gen_ab.state_dict(),
+                    'b': self.gen_ba.state_dict(),
+                    'e': self.estimator_noise.state_dict()}, gen_name)
         torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
         torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
 
