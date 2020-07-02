@@ -24,7 +24,7 @@ class Trainer(nn.Module):
                  activation='tanh', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=4, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
-                 lambda_content=10, lambda_content_id=1, lambda_diversity=.1, lambda_noise=1,
+                 lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
                  learning_rate=1e-4):
         super().__init__()
 
@@ -86,6 +86,9 @@ class Trainer(nn.Module):
             self.estimator_noise.parameters())
         self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
         self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
+
+        # Training utils
+        self.gen_stack = []
 
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
@@ -175,7 +178,7 @@ class Trainer(nn.Module):
         self.loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
         # Diversity loss
         diversity_diff = self.dis_a.calc_content_loss(x_ba, x_ba_div)
-        self.loss_gen_diversity = torch.mean(- diversity_diff / (torch.mean(torch.abs(n_gen - n_gen_2), [1, 2, 3])))
+        self.loss_gen_diversity = torch.mean(- torch.log(diversity_diff / (torch.mean(torch.abs(n_gen - n_gen_2), [1, 2, 3]))))
         # total loss
         self.loss_gen_total = self.lambda_reconstruction_id * (self.loss_gen_a_identity + self.loss_gen_b_identity) + \
                               self.lambda_reconstruction * (self.loss_gen_a_translate + self.loss_gen_b_translate) + \
@@ -189,24 +192,35 @@ class Trainer(nn.Module):
         self.loss_gen_total.backward()
         self.gen_opt.step()
 
+    def fill_stack(self, inputs):
+        for x_a, x_b in inputs:
+            with torch.no_grad():
+                n_gen = self.generateNoise(x_b)
+                x_ab = self.gen_ab(x_a).cpu().detach()
+                x_ba = self.gen_ba(x_b, n_gen).cpu().detach()
+                self.gen_stack.append((x_ab, x_ba))
+
     def discriminator_update(self, x_a, x_b):
         self.dis_opt.zero_grad()
         # noise
         n_gen = self.generateNoise(x_b)
         # translate
         with torch.no_grad():
-            x_ab = self.gen_ab(x_a)
-            x_ba = self.gen_ba(x_b, n_gen)
+            x_ab = self.gen_ab(x_a).cpu().detach()
+            x_ba = self.gen_ba(x_b, n_gen).cpu().detach()
+            self.gen_stack.append((x_ab, x_ba))
+            x_ab, x_ba = self.gen_stack.pop(0)
+            x_ab, x_ba = x_ab.cuda(), x_ba.cuda()
 
         # D loss
-        self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
-        self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
+        self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba, x_a)
+        self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab, x_b)
         self.loss_dis_total = self.loss_dis_a + self.loss_dis_b
         self.loss_dis_total.backward()
         self.dis_opt.step()
 
     def generateNoise(self, x_b):
-        n_gen = Variable(torch.randn(x_b.size(0), self.noise_dim,
+        n_gen = Variable(torch.rand(x_b.size(0), self.noise_dim,
                                      x_b.size(2) // 2 ** (self.depth_noise + self.upsampling),
                                      x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
         return n_gen
@@ -254,10 +268,13 @@ def convertSet(data_set, store_path):
 
 def loop(iterable):
     it = iterable.__iter__()
-
+    #
     while True:
         try:
             yield it.next()
         except StopIteration:
             it = iterable.__iter__()
             yield it.next()
+        except Exception as ex:
+            print(ex)
+            continue

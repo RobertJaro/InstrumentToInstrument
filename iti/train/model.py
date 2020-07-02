@@ -55,14 +55,16 @@ class GeneratorBA(nn.Module):
             self.down_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
             i_dim *= 2
 
-        n_dim = int(dim / 2 ** (1 - n_upsample))
+        n_dim = int(dim * 2 ** 2)
         self.transform_blocks = []
-        self.transform_blocks += [
-            Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        self.transform_blocks += [Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
         self.transform_blocks += [ResBlocks(n_res, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
 
+
         self.up_blocks = []
-        for i in range(n_upsample):
+        for _ in range(n_upsample - 3):
+            self.up_blocks += [UpBlock(n_dim, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
+        for i in range(3):
             self.up_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             n_dim //= 2
 
@@ -160,7 +162,7 @@ class NoiseEstimator(nn.Module):
             dim *= 2
         for i in range(n_downsample - 2):
             self.model += [Conv2dBlock(dim, dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model += [nn.Conv2d(dim, noise_dim, 1, 1, 0)]
+        self.model += [nn.Conv2d(dim, noise_dim, 1, 1, 0), nn.Sigmoid()]
         self.model = nn.Sequential(*self.model)
 
     def forward(self, x):

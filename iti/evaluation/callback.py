@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from torch.optim.lr_scheduler import StepLR
 
 from iti.train.trainer import Trainer
 
@@ -66,120 +67,6 @@ class BasicPlot(Callback):
 
     def predict(self, input_data):
         raise NotImplementedError()
-
-
-class ProgressPlot(Callback):
-
-    def __init__(self, path, dpi=100, **kwargs):
-        self.path = path
-        self.dpi = dpi
-
-        super().__init__(**kwargs)
-
-    def call(self, iteration, **kwargs):
-        history = kwargs["history"]
-        model = kwargs['model']
-        if len(history["loss"]) <= 200:
-            return
-        x = range(1, len(history["loss"]) + 1)[200:]  # SKIP first 200 entries
-
-        plt.plot(x, np.array(history["content_A_loss"][200:]) * model.lambda_content, label="Content Loss A")
-        plt.plot(x, np.array(history["content_B_loss"][200:]) * model.lambda_content, label="Content Loss B")
-        plt.plot(x, np.array(history["reconstruction_A_loss"][200:]) * model.lambda_reconstruction,
-                 label="Reconstruction A")
-        plt.plot(x, np.array(history["reconstruction_B_loss"][200:]) * model.lambda_reconstruction,
-                 label="Reconstruction B")
-        plt.plot(x, np.array(history["identity_A_loss"][200:]) * model.lambda_reconstruction_id, label="Identity A")
-        plt.plot(x, np.array(history["identity_B_loss"][200:]) * model.lambda_reconstruction_id, label="Identity B")
-        plt.plot(x, np.array(history["id_content_A_loss"][200:]) * model.lambda_content_id,
-                 label="Identity Content Loss A")
-        plt.plot(x, np.array(history["id_content_B_loss"][200:]) * model.lambda_content_id,
-                 label="Identity Content Loss B")
-        plt.xlabel("Iteration")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "progress_distortion.jpg"), dpi=self.dpi)
-        plt.close()
-
-        disc_A_loss = history["generator_discriminator_A_loss"][200:]
-        disc_B_loss = history["generator_discriminator_B_loss"][200:]
-        plt.plot(x, disc_A_loss, label="Discriminator A")
-        plt.plot(x, disc_B_loss, label="Discriminator B")
-        disc_loss = np.concatenate((disc_A_loss, disc_B_loss))
-        plt.ylim((np.mean(disc_loss) - 3 * np.std(disc_loss), np.mean(disc_loss) + 3 * np.std(disc_loss)))
-        plt.xlabel("Iteration")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "progress_perception.jpg"), dpi=self.dpi)
-        plt.close()
-
-        fake_loss = history["combined_discriminator_A_fake_0_loss"][200:]
-        real_loss = history["combined_discriminator_A_real_0_loss"][200:]
-        disc_loss = np.add(real_loss, fake_loss)
-        plt.plot(x, fake_loss, label="Fake")
-        plt.plot(x, real_loss, label="Real")
-        # plt.plot(x, disc_loss, label="Distance")
-        # plt.ylim((np.mean(disc_loss) - 3 * np.std(disc_loss), np.mean(disc_loss) + 3 * np.std(disc_loss)))
-        plt.xlabel("Iteration")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "progress_dA.jpg"), dpi=self.dpi)
-        plt.close()
-
-        fake_loss = history["combined_discriminator_B_fake_0_loss"][200:]
-        real_loss = history["combined_discriminator_B_real_0_loss"][200:]
-        disc_loss = np.add(real_loss, fake_loss)
-        plt.plot(x, fake_loss, label="Fake")
-        plt.plot(x, real_loss, label="Real")
-        # plt.plot(x, disc_loss, label="Distance")
-        # plt.ylim((np.mean(disc_loss) - 3 * np.std(disc_loss), np.mean(disc_loss) + 3 * np.std(disc_loss)))
-        plt.xlabel("Iteration")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "progress_dB.jpg"), dpi=self.dpi)
-        plt.close()
-
-
-class ValidationProgressPlot(Callback):
-
-    def __init__(self, path, dpi=100, **kwargs):
-        self.path = path
-        self.dpi = dpi
-
-        super().__init__(**kwargs)
-
-    def call(self, iteration, **kwargs):
-        history = kwargs["validation_history"]
-        x = range(self.log_iteration, (len(history["disc_A"]) + 1) * self.log_iteration, self.log_iteration)
-
-        plt.plot(x, history["disc_A"], label="Discriminator A")
-        plt.plot(x, history["disc_B"], label="Discriminator B")
-        plt.xlabel("Iteration")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "validation_disc.jpg"), dpi=self.dpi)
-        plt.close()
-
-        plt.plot(x, history["ssim_A"], label="SSIM A")
-        plt.plot(x, history["ssim_B"], label="SSIM B")
-        plt.xlabel("Iteration")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "validation_ssim.jpg"), dpi=self.dpi)
-        plt.close()
-
-        plt.scatter(1 - np.array(history["ssim_A"]), history["disc_A"], label="A")
-        plt.scatter(1 - np.array(history["ssim_B"]), history["disc_B"], label="B")
-        for i in range(len(history["disc_A"])):
-            plt.annotate(str(i + 1), (1 - np.array(history["ssim_A"])[i], history["disc_A"][i]))
-            plt.annotate(str(i + 1), (1 - np.array(history["ssim_B"])[i], history["disc_B"][i]))
-        plt.xlabel("Distortion (1 - SSIM)")
-        plt.ylabel("Perception (W-Distance)")
-        plt.gca().set_ylim(bottom=0)
-        plt.xlim([0, 1])
-        plt.legend()
-        plt.savefig(os.path.join(self.path, "perception_distortion.jpg"), dpi=self.dpi)
-        plt.close()
 
 
 class PlotABA(BasicPlot):
@@ -314,6 +201,7 @@ class HistoryCallback(Callback):
             self.plotAdversarial()
             self.plotContent()
             self.plotDistortion()
+            self.plotNoise()
         with open(self.history_path, 'wb') as f:
             pickle.dump(self.loss, f)
 
@@ -333,12 +221,18 @@ class HistoryCallback(Callback):
         plt.plot(self.loss['loss_gen_b_content'], label='Content B')
         plt.plot(self.loss['loss_gen_a_identity_content'], label='Content A Identity')
         plt.plot(self.loss['loss_gen_b_identity_content'], label='Content B Identity')
+        plt.legend()
+        plt.savefig(os.path.join(self.path, "progress_content.jpg"), dpi=100)
+        plt.close()
+
+    def plotNoise(self):
+        plt.figure(figsize=(16, 8))
         plt.plot(self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
         plt.plot(self.loss['loss_gen_ba_noise'], label='Noise BA')
         plt.plot(self.loss['loss_gen_aba_noise'], label='Noise ABA')
         plt.plot(self.loss['loss_gen_diversity'], label='Diversity')
         plt.legend()
-        plt.savefig(os.path.join(self.path, "progress_content.jpg"), dpi=100)
+        plt.savefig(os.path.join(self.path, "progress_noise.jpg"), dpi=100)
         plt.close()
 
     def plotDistortion(self):
@@ -376,3 +270,14 @@ class SaveCallback(Callback):
 
     def call(self, iteration, **kwargs):
         self.trainer.save(self.checkpoint_dir, iteration)
+
+
+class LRScheduler(Callback):
+    def __init__(self, trainer:Trainer, step=100000, gamma=0.5):
+        self.lr_scheduler_gen = StepLR(trainer.gen_opt, step_size=step, gamma=gamma)
+        self.lr_scheduler_dis = StepLR(trainer.dis_opt, step_size=step, gamma=gamma)
+        super(LRScheduler, self).__init__(1)
+
+    def call(self, iteration, **kwargs):
+        self.lr_scheduler_gen.step()
+        self.lr_scheduler_dis.step()

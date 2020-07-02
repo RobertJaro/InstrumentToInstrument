@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-from itertools import cycle
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -10,10 +9,10 @@ from torch.utils.data import DataLoader
 
 from iti.data.dataset import KSODataset, StorageDataset
 from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback
+    SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v3"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v4"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -25,7 +24,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, lambda_noise=100, lambda_diversity=10)
+trainer = Trainer(1, 1)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -41,19 +40,27 @@ history = HistoryCallback(trainer, base_dir)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
 
-plot_settings_A = {"cmap": "gray", "title": "Quality 2", 'vmin':-1, 'vmax':1}
-plot_settings_B = {"cmap": "gray", "title": "Quality 1", 'vmin':-1, 'vmax':1}
+plot_settings_A = {"cmap": "gray", "title": "Quality 2", 'vmin': -1, 'vmax': 1}
+plot_settings_B = {"cmap": "gray", "title": "Quality 1", 'vmin': -1, 'vmax': 1}
 
-bab_callback = PlotBAB(q1_dataset.sample(8), trainer, prediction_dir, log_iteration=1000,
+log_iteration = 1000
+bab_callback = PlotBAB(q1_dataset.sample(8), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-aba_callback = PlotABA(q2_dataset.sample(8), trainer, prediction_dir, log_iteration=1000,
+aba_callback = PlotABA(q2_dataset.sample(8), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-v_callback = VariationPlotBA(q1_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=1000,
+v_callback = VariationPlotBA(q1_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
+lr_scheduler = LRScheduler(trainer, 30000)
+
+callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
+
+# Init generator stack
+trainer.fill_stack([(next(q2_iterator).float().cuda().detach(),
+                     next(q1_iterator).float().cuda().detach()) for _ in range(50)])
+# Start training
 for it in range(start_it, int(1e8)):
     x_a, x_b = next(q2_iterator), next(q1_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
