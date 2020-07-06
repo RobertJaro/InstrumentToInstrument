@@ -1,11 +1,17 @@
+from enum import Enum
+
 import torch
 from torch import nn
 from torch.nn import LayerNorm
 from torch.nn.utils.spectral_norm import SpectralNorm
 
+class DiscriminatorMode(Enum):
+    SINGLE = "MULTI_CHANNEL"  # use a single discriminator across all channels
+    PER_CHANNEL = "PER_CHANNEL"  # use a discriminator per channel and one for the the combined channels
+    SINGLE_PER_CHANNEL = "SINGLE_PER_CHANNEL"  # use a single discriminator for each channel and one for the combined channels
+
 
 ########################## Generator ##################################
-
 class GeneratorAB(nn.Module):
     def __init__(self, input_dim, output_dim, n_downsample, n_upsample, dim=64, n_res=9,
                  norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
@@ -88,21 +94,38 @@ class GeneratorBA(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, num_scales=3):
+    def __init__(self, input_dim, num_scales=3, discriminator_mode = DiscriminatorMode.SINGLE):
         self.pad_type = 'reflect'
         self.activ = 'relu'
         self.norm = 'in'
         self.n_layer = 4
         super().__init__()
         self.input_dim = input_dim
+        self.num_scales = num_scales
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
-        self.cnns = nn.ModuleList()
-        for _ in range(num_scales):
-            self.cnns.append(self._make_net())
 
-    def _make_net(self, dim=64):
+        self.discs = nn.ModuleList()
+        self.channel_discs = nn.ModuleDict()
+        # create combined discriminators
+        for _ in range(num_scales):
+            self.discs.append(self._make_net(input_dim))
+        # create channel discriminators
+        if discriminator_mode == DiscriminatorMode.PER_CHANNEL:
+            for i in range(input_dim):
+                channel_disc = nn.ModuleList()
+                for _ in range(num_scales):
+                    channel_disc.append(self._make_net(1))
+                self.channel_discs['%d' % i] = channel_disc
+        if discriminator_mode == DiscriminatorMode.SINGLE_PER_CHANNEL:
+            channel_disc = nn.ModuleList()
+            for _ in range(num_scales):
+                channel_disc.append(self._make_net(1))
+            for i in range(input_dim):
+                self.channel_discs['%d' % i] = channel_disc
+
+    def _make_net(self,input_dim, dim=64):
         cnn_x = []
-        cnn_x += [Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
+        cnn_x += [Conv2dBlock(input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
         for i in range(self.n_layer - 1):
             cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
             dim *= 2
@@ -112,8 +135,10 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         outputs = []
-        for model in self.cnns:
-            outputs.append(model(x))
+        for i in range(self.num_scales):
+            outputs.append(self.discs[i](x))
+            for j, discs in enumerate(self.channel_discs.values()):
+                outputs.append(discs[i](x[:, j:j+1]))
             x = self.downsample(x)
         return outputs
 
@@ -137,13 +162,24 @@ class Discriminator(nn.Module):
 
     def calc_content_loss(self, input_real, input_fake):
         loss = []
-        for model in self.cnns:
+        for i in range(self.num_scales):
+            # content loss of combined discriminator
             x = input_real
             y = input_fake
-            for layer in model[:-1]:
+            for layer in self.discs[i][:-1]:
                 x = layer(x)
                 y = layer(y)
                 loss.append(torch.mean(torch.abs(x - y), [1, 2, 3]))
+
+            # content loss of channel discriminator
+            for j, discs in enumerate(self.channel_discs.values()):
+                x = input_real[:, j:j+1]
+                y = input_fake[:, j:j+1]
+                for layer in discs[i][:-1]:
+                    x = layer(x)
+                    y = layer(y)
+                    loss.append(torch.mean(torch.abs(x - y), [1, 2, 3]))
+
             input_real = self.downsample(input_real)
             input_fake = self.downsample(input_fake)
         return torch.mean(torch.stack(loss, 1), 1)

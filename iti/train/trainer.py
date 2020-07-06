@@ -2,7 +2,6 @@ import glob
 import logging
 import os
 from datetime import datetime
-from enum import Enum
 
 import numpy as np
 import torch
@@ -10,13 +9,7 @@ from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator
-
-
-class DiscriminatorMode(Enum):
-    SINGLE = "MULTI_CHANNEL"  # use a single discriminator across all channels
-    PER_CHANNEL = "PER_CHANNEL"  # use a discriminator per channel and one for the the combined channels
-    SINGLE_PER_CHANNEL = "SINGLE_PER_CHANNEL"  # use a single discriminator for each channel and one for the combined channels
+from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
 
 
 class Trainer(nn.Module):
@@ -73,11 +66,13 @@ class Trainer(nn.Module):
         ############################## INIT NETWORKS ###############################
         self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator,
                                   depth_generator + upsampling, n_filters)  # generator for domain a-->b
-        self.gen_ba = GeneratorBA(input_dim_b, noise_dim, input_dim_a, upsampling, depth_noise, n_filters)  # generator for domain b-->a
-        self.dis_a = Discriminator(input_dim_a, n_discriminators)  # discriminator for domain a
-        self.dis_b = Discriminator(input_dim_b, n_discriminators)  # discriminator for domain b
+        self.gen_ba = GeneratorBA(input_dim_b, noise_dim, input_dim_a, upsampling, depth_noise,
+                                  n_filters)  # generator for domain b-->a
+        self.dis_a = Discriminator(input_dim_a, n_discriminators, discriminator_mode)  # discriminator for domain a
+        self.dis_b = Discriminator(input_dim_b, n_discriminators, discriminator_mode)  # discriminator for domain b
         self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim)
-        self.downsample = nn.AvgPool2d(3 ** upsampling, stride=2 ** upsampling, padding=[upsampling, upsampling], count_include_pad=False)
+        self.downsample = nn.AvgPool2d(3 ** upsampling, stride=2 ** upsampling, padding=[upsampling, upsampling],
+                                       count_include_pad=False)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2 ** upsampling)
 
         # Setup the optimizers
@@ -158,7 +153,6 @@ class Trainer(nn.Module):
         n_gen_2 = self.generateNoise(x_b)
         x_ba_div = self.gen_ba(x_b, n_gen_2)
 
-
         # reconstruction loss
         self.loss_gen_a_identity = self.recon_criterion(x_a_identity, x_a)
         self.loss_gen_b_identity = self.recon_criterion(x_b_identity, x_b)
@@ -178,7 +172,8 @@ class Trainer(nn.Module):
         self.loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
         # Diversity loss
         diversity_diff = self.dis_a.calc_content_loss(x_ba, x_ba_div)
-        self.loss_gen_diversity = torch.mean(- torch.log(diversity_diff / (torch.mean(torch.abs(n_gen - n_gen_2), [1, 2, 3]))))
+        self.loss_gen_diversity = torch.mean(
+            - torch.log(diversity_diff / (torch.mean(torch.abs(n_gen - n_gen_2), [1, 2, 3]))))
         # total loss
         self.loss_gen_total = self.lambda_reconstruction_id * (self.loss_gen_a_identity + self.loss_gen_b_identity) + \
                               self.lambda_reconstruction * (self.loss_gen_a_translate + self.loss_gen_b_translate) + \
@@ -221,8 +216,8 @@ class Trainer(nn.Module):
 
     def generateNoise(self, x_b):
         n_gen = Variable(torch.rand(x_b.size(0), self.noise_dim,
-                                     x_b.size(2) // 2 ** (self.depth_noise + self.upsampling),
-                                     x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
+                                    x_b.size(2) // 2 ** (self.depth_noise + self.upsampling),
+                                    x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
         return n_gen
 
     def resume(self, checkpoint_dir):
@@ -279,5 +274,5 @@ def loop(iterable):
             it = iterable.__iter__()
             yield it.next()
         except Exception as ex:
-            print(ex)
+            logging.error(str(ex))
             continue

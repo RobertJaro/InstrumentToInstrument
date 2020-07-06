@@ -137,8 +137,9 @@ class VariationPlotBA(BasicPlot):
                  **kwargs):
         self.n_samples = n_samples
 
-        plot_settings_A = plot_settings_A if plot_settings_A is not None else [{"cmap": "gray"}] * model.input_dim_a * n_samples
-        plot_settings_A = plot_settings_A if isinstance(plot_settings_A, list) else [plot_settings_A] * model.input_dim_a * n_samples
+        plot_settings_A = plot_settings_A if plot_settings_A is not None else [{"cmap": "gray"}] * model.input_dim_a
+        plot_settings_A = plot_settings_A if isinstance(plot_settings_A, list) else [plot_settings_A] * model.input_dim_a
+        plot_settings_A = plot_settings_A * n_samples
         plot_settings_B = plot_settings_B if plot_settings_B is not None else [{"cmap": "gray"}] * model.input_dim_b
         plot_settings_B = plot_settings_B if isinstance(plot_settings_B, list) else [
                                                                                         plot_settings_B] * model.input_dim_b
