@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn import LayerNorm
 from torch.nn.utils.spectral_norm import SpectralNorm
 
+
 class DiscriminatorMode(Enum):
     SINGLE = "MULTI_CHANNEL"  # use a single discriminator across all channels
     PER_CHANNEL = "PER_CHANNEL"  # use a discriminator per channel and one for the the combined channels
@@ -53,48 +54,62 @@ class GeneratorAB(nn.Module):
 class GeneratorBA(nn.Module):
     def __init__(self, input_dim, noise_dim, output_dim, n_downsample, n_upsample, dim=64, n_res=9,
                  norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
+        assert n_upsample >= 2, 'Found noise depth %d, but minimum is 2' % n_upsample
         super().__init__()
-        i_dim = int(dim / 2 ** (1 + n_downsample))
-        self.down_blocks = []
-        self.down_blocks += [Conv2dBlock(input_dim, i_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
-        for i in range(n_downsample):
-            self.down_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
+        i_dim = int(dim / 2 ** n_downsample)
+        self.image_blocks = []
+        self.image_blocks += [Conv2dBlock(input_dim, i_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        for i in range(n_downsample + 2):
+            self.image_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
             i_dim *= 2
 
         n_dim = int(dim * 2 ** 2)
-        self.transform_blocks = []
-        self.transform_blocks += [Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
-        self.transform_blocks += [ResBlocks(n_res, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
+        self.noise_blocks = []
+        self.noise_blocks += [Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        self.noise_blocks += [ResBlocks(n_res // 2, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
 
+        for _ in range(n_upsample - 2):
+            self.noise_blocks += [UpBlock(n_dim, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
+
+        m_dim = int(dim * 2 ** 2)
+        self.merge_blocks = [Conv2dBlock(i_dim + n_dim, m_dim, 1, 1, 0, norm=norm, activation=activ, pad_type=pad_type)]
+        self.merge_blocks += [ResBlocks(n_res // 2, m_dim, norm=norm, activation=activ, pad_type=pad_type)]
 
         self.up_blocks = []
-        for _ in range(n_upsample - 3):
-            self.up_blocks += [UpBlock(n_dim, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
-        for i in range(3):
+        for i in range(2):
             self.up_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             n_dim //= 2
 
-        self.merge_blocks = []
-        self.merge_blocks += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
-        self.merge_blocks += [
+        self.up_blocks += [
             Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
 
-        self.model = nn.Sequential(*self.down_blocks, *self.transform_blocks, *self.up_blocks, *self.merge_blocks)
-        self.down_blocks = nn.Sequential(*self.down_blocks)
-        self.transform_blocks = nn.Sequential(*self.transform_blocks)
-        self.up_blocks = nn.Sequential(*self.up_blocks)
+        self.image_blocks = nn.Sequential(*self.image_blocks)
+        self.noise_blocks = nn.Sequential(*self.noise_blocks)
         self.merge_blocks = nn.Sequential(*self.merge_blocks)
+        self.up_blocks = nn.Sequential(*self.up_blocks)
+        self.model = nn.ModuleList([self.image_blocks, self.noise_blocks, self.merge_blocks, self.up_blocks])
 
     def forward(self, images, noise):
-        x = self.down_blocks(images)
-        y = self.transform_blocks(noise)
-        y = self.up_blocks(y)
-        x = torch.cat([x, y], 1)
-        return self.merge_blocks(x)
+        x = images
+        skip_connections = []
+        for down in self.image_blocks:
+            x = down(x)
+            skip_connections.append(x)
+
+        y = self.noise_blocks(noise)
+
+        x = torch.cat([x, y], dim=1)
+        x = self.merge_blocks(x)
+
+        for up in self.up_blocks:
+            x += skip_connections.pop(-1)
+            x = up(x)
+
+        return x
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, num_scales=3, discriminator_mode = DiscriminatorMode.SINGLE):
+    def __init__(self, input_dim, num_scales=3, discriminator_mode=DiscriminatorMode.SINGLE):
         self.pad_type = 'reflect'
         self.activ = 'relu'
         self.norm = 'in'
@@ -123,7 +138,7 @@ class Discriminator(nn.Module):
             for i in range(input_dim):
                 self.channel_discs['%d' % i] = channel_disc
 
-    def _make_net(self,input_dim, dim=64):
+    def _make_net(self, input_dim, dim=64):
         cnn_x = []
         cnn_x += [Conv2dBlock(input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
         for i in range(self.n_layer - 1):
@@ -138,7 +153,7 @@ class Discriminator(nn.Module):
         for i in range(self.num_scales):
             outputs.append(self.discs[i](x))
             for j, discs in enumerate(self.channel_discs.values()):
-                outputs.append(discs[i](x[:, j:j+1]))
+                outputs.append(discs[i](x[:, j:j + 1]))
             x = self.downsample(x)
         return outputs
 
@@ -173,8 +188,8 @@ class Discriminator(nn.Module):
 
             # content loss of channel discriminator
             for j, discs in enumerate(self.channel_discs.values()):
-                x = input_real[:, j:j+1]
-                y = input_fake[:, j:j+1]
+                x = input_real[:, j:j + 1]
+                y = input_fake[:, j:j + 1]
                 for layer in discs[i][:-1]:
                     x = layer(x)
                     y = layer(y)

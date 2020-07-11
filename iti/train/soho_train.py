@@ -18,7 +18,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v1"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v3"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -79,10 +79,15 @@ bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iterati
 aba_callback = PlotABA(soho_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-full_disc_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024)).sample(2), trainer,
+full_disc_aba_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024)).sample(2), trainer,
+                                 prediction_dir, log_iteration=log_iteration,
+                                 plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_aba')
+full_disc_aba_callback.call(0)
+
+full_disc_bab_callback = PlotBAB(SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(2048, 2048)).sample(2), trainer,
                              prediction_dir, log_iteration=log_iteration,
-                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc')
-full_disc_callback.call(0)
+                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_bab')
+full_disc_bab_callback.call(0)
 
 small_fov_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(32, 32)).sample(8), trainer,
                              prediction_dir, log_iteration=log_iteration,
@@ -93,7 +98,7 @@ v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, lo
 
 lr_scheduler = LRScheduler(trainer, 30000)
 
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler, full_disc_callback, small_fov_callback]
+callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler, full_disc_aba_callback, full_disc_bab_callback, small_fov_callback]
 
 # Init generator stack
 # trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),

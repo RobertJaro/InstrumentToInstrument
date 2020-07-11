@@ -12,7 +12,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v4"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v5"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
