@@ -15,7 +15,7 @@ from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstima
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=9,
                  activation='tanh', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
-                 depth_generator=3, depth_discriminator=4, depth_noise=4,
+                 depth_generator=3, depth_discriminator=3, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
                  learning_rate=1e-4):
@@ -68,11 +68,10 @@ class Trainer(nn.Module):
                                   depth_generator + upsampling, n_filters)  # generator for domain a-->b
         self.gen_ba = GeneratorBA(input_dim_b, noise_dim, input_dim_a, upsampling, depth_noise,
                                   n_filters)  # generator for domain b-->a
-        self.dis_a = Discriminator(input_dim_a, n_discriminators, discriminator_mode)  # discriminator for domain a
-        self.dis_b = Discriminator(input_dim_b, n_discriminators, discriminator_mode)  # discriminator for domain b
+        self.dis_a = Discriminator(input_dim_a, n_discriminators, depth_discriminator, discriminator_mode)  # discriminator for domain a
+        self.dis_b = Discriminator(input_dim_b, n_discriminators, depth_discriminator, discriminator_mode)  # discriminator for domain b
         self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim)
-        self.downsample = nn.AvgPool2d(3 ** upsampling, stride=2 ** upsampling, padding=[upsampling, upsampling],
-                                       count_include_pad=False)
+        self.downsample = nn.AvgPool2d(2 ** upsampling)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2 ** upsampling)
 
         # Setup the optimizers

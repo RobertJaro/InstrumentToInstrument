@@ -1,3 +1,4 @@
+import gc
 import glob
 import logging
 import os
@@ -7,12 +8,14 @@ from multiprocessing.pool import Pool
 from typing import List
 
 import numpy as np
+from astropy.visualization import ImageNormalize, LinearStretch
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
     MapToDataEditor, PyramidRescaleEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, RandomPatchEditor, NanEditor, LoadFITSEditor, \
-    KSOFilmPrepEditor
+    KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor
 
 
 class Norm(Enum):
@@ -82,6 +85,10 @@ class StorageDataset(Dataset):
         indices = random.sample(range(len(self.dataset)), n_samples)
         return np.array(Pool(8).map(self.__getitem__, indices))
 
+    def convert(self, n_worker):
+        for _ in tqdm(Pool(n_worker).imap(self.__getitem__, range(len(self.dataset))), total=len(self.dataset)):
+            gc.collect()
+
 
 class KSODataset(BaseDataset):
 
@@ -99,6 +106,7 @@ class KSODataset(BaseDataset):
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
 
+
 class KSOFilmDataset(BaseDataset):
 
     def __init__(self, path, resolution=256, ext="*.fts.gz", limit=None):
@@ -115,6 +123,7 @@ class KSOFilmDataset(BaseDataset):
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
 
+
 class SDODataset(BaseDataset):
 
     def __init__(self, path, patch_shape=None):
@@ -122,7 +131,7 @@ class SDODataset(BaseDataset):
                      AIADataset(os.path.join(path, 'aia_193'), 193),
                      AIADataset(os.path.join(path, 'aia_211'), 211),
                      AIADataset(os.path.join(path, 'aia_304'), 304),
-                     HMIDataset(os.path.join(path, 'hmi_mag'))
+                     HMIDataset(os.path.join(path, 'hmi_mag'), 'mag')
                      ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
@@ -195,8 +204,8 @@ class AIADataset(BaseDataset):
 
 class HMIDataset(BaseDataset):
 
-    def __init__(self, path, resolution=2048, ext='*.fits'):
-        norm = sdo_norms[6173]
+    def __init__(self, path, id, resolution=2048, ext='*.fits'):
+        norm = sdo_norms[id]
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
@@ -207,4 +216,35 @@ class HMIDataset(BaseDataset):
                    PyramidRescaleEditor(4096 / resolution),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
+        super().__init__(map_paths, editors=editors)
+
+
+class HMIContinuumDataset(BaseDataset):
+
+    def __init__(self, path, patch_shape, ext='*.fits'):
+        norm = sdo_norms['continuum']
+        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+
+        editors = [LoadMapEditor(),
+                   ScaleEditor(0.6),
+                   FeaturePatchEditor(patch_shape),
+                   MapToDataEditor(),
+                   NanEditor(),
+                   NormalizeEditor(norm),
+                   ExpandDimsEditor()]
+        super().__init__(map_paths, editors=editors)
+
+
+class HinodeDataset(BaseDataset):
+
+    def __init__(self, path, ext='*.fits'):
+        norm = ImageNormalize(vmin=0, vmax=4000, stretch=LinearStretch(), clip=True)
+        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+
+        editors = [LoadMapEditor(),
+                   ScaleEditor(0.15),
+                   MapToDataEditor(),
+                   NanEditor(),
+                   NormalizeEditor(norm),
+                   ExpandDimsEditor()]
         super().__init__(map_paths, editors=editors)

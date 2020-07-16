@@ -7,7 +7,7 @@ from torch.nn.utils.spectral_norm import SpectralNorm
 
 
 class DiscriminatorMode(Enum):
-    SINGLE = "MULTI_CHANNEL"  # use a single discriminator across all channels
+    SINGLE = "SINGLE"  # use a single discriminator across all channels
     PER_CHANNEL = "PER_CHANNEL"  # use a discriminator per channel and one for the the combined channels
     SINGLE_PER_CHANNEL = "SINGLE_PER_CHANNEL"  # use a single discriminator for each channel and one for the combined channels
 
@@ -59,61 +59,48 @@ class GeneratorBA(nn.Module):
         i_dim = int(dim / 2 ** n_downsample)
         self.image_blocks = []
         self.image_blocks += [Conv2dBlock(input_dim, i_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
-        for i in range(n_downsample + 2):
+        for i in range(n_downsample):
             self.image_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
             i_dim *= 2
 
-        n_dim = int(dim * 2 ** 2)
+        n_dim = int(dim * 2 ** 3)
         self.noise_blocks = []
         self.noise_blocks += [Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
-        self.noise_blocks += [ResBlocks(n_res // 2, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
+        self.noise_blocks += [ResBlocks(n_res, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
 
-        for _ in range(n_upsample - 2):
+        for _ in range(n_upsample - 3):
             self.noise_blocks += [UpBlock(n_dim, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
-
-        m_dim = int(dim * 2 ** 2)
-        self.merge_blocks = [Conv2dBlock(i_dim + n_dim, m_dim, 1, 1, 0, norm=norm, activation=activ, pad_type=pad_type)]
-        self.merge_blocks += [ResBlocks(n_res // 2, m_dim, norm=norm, activation=activ, pad_type=pad_type)]
-
-        self.up_blocks = []
-        for i in range(2):
-            self.up_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
+        for i in range(3):
+            self.noise_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             n_dim //= 2
 
-        self.up_blocks += [
+        self.merge_blocks = [Conv2dBlock(n_dim + i_dim, dim, 1, 1, 0, norm=norm, activation=activ, pad_type=pad_type)]
+        self.merge_blocks += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
+
+        self.merge_blocks += [
             Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
 
         self.image_blocks = nn.Sequential(*self.image_blocks)
         self.noise_blocks = nn.Sequential(*self.noise_blocks)
         self.merge_blocks = nn.Sequential(*self.merge_blocks)
-        self.up_blocks = nn.Sequential(*self.up_blocks)
-        self.model = nn.ModuleList([self.image_blocks, self.noise_blocks, self.merge_blocks, self.up_blocks])
+        self.model = nn.ModuleList([self.image_blocks, self.noise_blocks, self.merge_blocks])
 
     def forward(self, images, noise):
-        x = images
-        skip_connections = []
-        for down in self.image_blocks:
-            x = down(x)
-            skip_connections.append(x)
-
+        x = self.image_blocks(images)
         y = self.noise_blocks(noise)
 
         x = torch.cat([x, y], dim=1)
         x = self.merge_blocks(x)
 
-        for up in self.up_blocks:
-            x += skip_connections.pop(-1)
-            x = up(x)
-
         return x
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, num_scales=3, discriminator_mode=DiscriminatorMode.SINGLE):
+    def __init__(self, input_dim, num_scales=3, depth_discriminator=3, discriminator_mode=DiscriminatorMode.SINGLE):
         self.pad_type = 'reflect'
         self.activ = 'relu'
         self.norm = 'in'
-        self.n_layer = 4
+        self.depth_discriminator = depth_discriminator
         super().__init__()
         self.input_dim = input_dim
         self.num_scales = num_scales
@@ -141,7 +128,7 @@ class Discriminator(nn.Module):
     def _make_net(self, input_dim, dim=64):
         cnn_x = []
         cnn_x += [Conv2dBlock(input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
-        for i in range(self.n_layer - 1):
+        for i in range(self.depth_discriminator):
             cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
             dim *= 2
         cnn_x += [nn.Conv2d(dim, 1, 1, 1, 0)]

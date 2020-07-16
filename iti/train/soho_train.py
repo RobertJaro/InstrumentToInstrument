@@ -18,7 +18,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v3"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v4"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -30,8 +30,8 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(5, 5, depth_generator=2, depth_noise=3, n_filters=64,res_blocks=4, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL,
-                  lambda_diversity=0, )
+trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL,
+                  lambda_diversity=0, lambda_reconstruction=10, lambda_reconstruction_id=1)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 

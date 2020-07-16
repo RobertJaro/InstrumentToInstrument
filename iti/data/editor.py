@@ -11,9 +11,9 @@ from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.visualization import ImageNormalize, LinearStretch, AsinhStretch, LogStretch
 from dateutil.parser import parse
+from scipy import ndimage
 from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
-from sunpy.coordinates.sun import angular_radius
 from sunpy.map import Map, all_coordinates_from_map, header_helper
 
 
@@ -42,7 +42,8 @@ sdo_norms = {94: ImageNormalize(vmin=0, vmax=445.5, stretch=AsinhStretch(0.005),
              335: ImageNormalize(vmin=0, vmax=915, stretch=AsinhStretch(0.005), clip=True),
              1600: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
              1700: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
-             6173: ImageNormalize(vmin=-100, vmax=100, stretch=LinearStretch(), clip=True),
+             'mag': ImageNormalize(vmin=-100, vmax=100, stretch=LinearStretch(), clip=True),
+             'continuum': ImageNormalize(vmin=0, vmax=70000, stretch=LinearStretch(), clip=True),
              }
 
 soho_norms = {171: ImageNormalize(vmin=0, vmax=3000, stretch=LogStretch(), clip=True),
@@ -139,6 +140,15 @@ class ReshapeEditor(Editor):
         return np.reshape(data, self.shape)
 
 
+class ExpandDimsEditor(Editor):
+
+    def __init__(self, axis=0):
+        self.axis = axis
+
+    def call(self, data, **kwargs):
+        return np.expand_dims(data, axis=self.axis)
+
+
 class NanEditor(Editor):
     def call(self, data, **kwargs):
         data = np.nan_to_num(data)
@@ -170,6 +180,7 @@ class KSOPrepEditor(Editor):
             kso_map.meta["PC2_2"] = c
 
             return kso_map
+
 
 class KSOFilmPrepEditor(Editor):
     def __init__(self, add_rotation=False):
@@ -218,6 +229,19 @@ class AIAPrepEditor(Editor):
         return data
 
 
+class NormalizeExposureEditor(Editor):
+    def __init__(self):
+        super().__init__()
+
+    def call(self, s_map, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # ignore warnings
+            data = s_map.data
+            data = data / s_map.exposure_time
+            data = data.astype(np.float32)
+            return Map(data, s_map.meta)
+
+
 class NormalizeRadiusEditor(Editor):
     def __init__(self, resolution, padding_factor=0.1):
         self.padding_factor = padding_factor
@@ -236,6 +260,37 @@ class NormalizeRadiusEditor(Editor):
                                           [-arcs_frame, arcs_frame] * u.arcsec,
                                           frame=s_map.coordinate_frame))
             s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
+            return s_map
+
+
+class ScaleEditor(Editor):
+    def __init__(self, arcspp):
+        self.arcspp = arcspp
+        super(ScaleEditor, self).__init__()
+
+    def call(self, s_map, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # ignore warnings
+            scale_factor = s_map.scale[0].value / self.arcspp
+            new_dimensions = [int(s_map.data.shape[1] * scale_factor),
+                              int(s_map.data.shape[0] * scale_factor)] * u.pixel
+            s_map = s_map.resample(new_dimensions)
+            return Map(s_map.data.astype(np.float32), s_map.meta)
+
+
+class SubmapSolarRadiiEditor(Editor):
+    def __init__(self, solar_radii=1):
+        self.solar_radii = solar_radii
+        super(SubmapSolarRadiiEditor, self).__init__()
+
+    def call(self, s_map, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # ignore warnings
+            arcs_frame = s_map.rsun_obs * self.solar_radii
+            s_map = s_map.submap(SkyCoord([-arcs_frame, arcs_frame] * u.arcsec,
+                                          [-arcs_frame, arcs_frame] * u.arcsec,
+                                          frame=s_map.coordinate_frame))
+
             return s_map
 
 
@@ -279,6 +334,36 @@ class RemoveOffLimbEditor(Editor):
             s_map.data[r > 1] = self.fill_value
             return s_map
 
+class FeaturePatchEditor(Editor):
+
+    def __init__(self, patch_shape=(512, 512)):
+        self.patch_shape = patch_shape
+
+    def call(self, s_map, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # ignore warnings
+            hpc_coords = all_coordinates_from_map(s_map)
+            r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
+
+            data = s_map.data
+            data = np.nan_to_num(data)
+            data = ndimage.gaussian_filter(data, sigma=5)
+            data[r > 0.9] = np.nan
+            pixel_pos = np.argwhere(data == np.nanmin(data))
+            pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
+            pixel_pos = [pixel_pos[1], pixel_pos[0]]
+            pixel_pos = np.min([pixel_pos[0], data.shape[0] - self.patch_shape[0]]), np.min([pixel_pos[1], data.shape[1] - self.patch_shape[1]])
+            pixel_pos = np.max([pixel_pos[0], self.patch_shape[0]]), np.max([pixel_pos[1], self.patch_shape[1]])
+
+            pixel_pos = np.array(pixel_pos) * u.pix
+            center = s_map.pixel_to_world(pixel_pos[0], pixel_pos[1])
+
+            arcs_frame = s_map.scale[0] * (self.patch_shape[0] * u.pix)
+            s_map = s_map.submap(SkyCoord([center.Tx-arcs_frame, center.Tx+arcs_frame] * u.arcsec,
+                                          [center.Ty-arcs_frame, center.Ty+arcs_frame] * u.arcsec,
+                                          frame=s_map.coordinate_frame))
+
+            return s_map
 
 class RandomPatchEditor(Editor):
     def __init__(self, patch_shape):
