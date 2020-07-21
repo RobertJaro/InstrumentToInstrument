@@ -48,7 +48,8 @@ bab_callback = PlotBAB(q1_dataset.sample(8), trainer, prediction_dir, log_iterat
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
 aba_callback = PlotABA(q2_dataset.sample(8), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
+                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300)
+aba_callback.call(0)
 
 v_callback = VariationPlotBA(q1_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)

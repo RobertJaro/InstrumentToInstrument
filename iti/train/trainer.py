@@ -5,7 +5,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, autograd
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 

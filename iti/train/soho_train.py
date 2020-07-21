@@ -18,7 +18,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v4"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v5"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -31,13 +31,13 @@ logging.basicConfig(
 
 # Init Model
 trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL,
-                  lambda_diversity=0, lambda_reconstruction=10, lambda_reconstruction_id=1)
+                  lambda_diversity=0, lambda_reconstruction=1, lambda_reconstruction_id=1, lambda_discriminator=0.1,
+                  lambda_content=1, lambda_content_id=1, )
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
 sdo_dataset = SDODataset("/gss/r.jarolim/data/sdo/train", patch_shape=(1024, 1024))
-sdo_dataset.data = sample(sdo_dataset.data, 100)
 sdo_dataset = StorageDataset(sdo_dataset,
                              '/gss/r.jarolim/data/converted/sdo_train',
                              ext_editors=[RandomPatchEditor((256, 256))])
@@ -98,7 +98,7 @@ v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, lo
 
 lr_scheduler = LRScheduler(trainer, 30000)
 
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler, full_disc_aba_callback, full_disc_bab_callback, small_fov_callback]
+callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler, full_disc_aba_callback, full_disc_bab_callback]
 
 # Init generator stack
 # trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),

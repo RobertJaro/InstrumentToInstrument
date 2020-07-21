@@ -1,10 +1,11 @@
 from enum import Enum
 
 import torch
-from torch import nn
+from torch import nn, autograd
+from torch.autograd import Variable
 from torch.nn import LayerNorm
 from torch.nn.utils.spectral_norm import SpectralNorm
-
+import numpy as np
 
 class DiscriminatorMode(Enum):
     SINGLE = "SINGLE"  # use a single discriminator across all channels
@@ -56,14 +57,14 @@ class GeneratorBA(nn.Module):
                  norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
         assert n_upsample >= 2, 'Found noise depth %d, but minimum is 2' % n_upsample
         super().__init__()
-        i_dim = int(dim / 2 ** n_downsample)
+        i_dim = int(dim / 2 ** (n_downsample + 1))
         self.image_blocks = []
         self.image_blocks += [Conv2dBlock(input_dim, i_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
         for i in range(n_downsample):
             self.image_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
             i_dim *= 2
 
-        n_dim = int(dim * 2 ** 3)
+        n_dim = int(dim * 2 ** 2)
         self.noise_blocks = []
         self.noise_blocks += [Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
         self.noise_blocks += [ResBlocks(n_res, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
@@ -74,7 +75,7 @@ class GeneratorBA(nn.Module):
             self.noise_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             n_dim //= 2
 
-        self.merge_blocks = [Conv2dBlock(n_dim + i_dim, dim, 1, 1, 0, norm=norm, activation=activ, pad_type=pad_type)]
+        self.merge_blocks = []
         self.merge_blocks += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
 
         self.merge_blocks += [

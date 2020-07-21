@@ -9,7 +9,7 @@ from typing import List
 
 import numpy as np
 from astropy.visualization import ImageNormalize, LinearStretch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
@@ -86,8 +86,16 @@ class StorageDataset(Dataset):
         return np.array(Pool(8).map(self.__getitem__, indices))
 
     def convert(self, n_worker):
-        for _ in tqdm(Pool(n_worker).imap(self.__getitem__, range(len(self.dataset))), total=len(self.dataset)):
-            gc.collect()
+        it = DataLoader(self, batch_size=1, shuffle=False, num_workers=n_worker).__iter__()
+        for _ in tqdm(range(len(self.dataset))):
+            try:
+                it.next()
+                gc.collect()
+            except StopIteration:
+                return
+            except Exception as ex:
+                logging.error(str(ex))
+                continue
 
 
 class KSODataset(BaseDataset):

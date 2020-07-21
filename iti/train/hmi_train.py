@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from iti.data.editor import RandomPatchEditor
+from iti.data.editor import RandomPatchEditor, NanEditor
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -14,7 +14,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/hmi_hinode_v2"
+base_dir = "/gss/r.jarolim/prediction/iti/hmi_hinode_v3"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -26,7 +26,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, upsampling=2, lambda_diversity=0, n_filters=32, depth_generator=4)
+trainer = Trainer(1, 1, upsampling=2, lambda_diversity=0)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -34,11 +34,11 @@ start_it = trainer.resume(base_dir)
 hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173", (256, 256))
 hmi_dataset = StorageDataset(hmi_dataset,
                              '/gss/r.jarolim/data/converted/hmi_train',
-                             ext_editors=[RandomPatchEditor((176, 176))])
+                             ext_editors=[NanEditor(),RandomPatchEditor((160, 160))])
 
 hinode_dataset = StorageDataset(HinodeDataset("/gss/r.jarolim/data/hinode/level1"),
                                 '/gss/r.jarolim/data/converted/hinode_train',
-                                ext_editors=[RandomPatchEditor((704, 704))])
+                                ext_editors=[NanEditor(), RandomPatchEditor((640, 640))])
 
 hmi_iterator = loop(DataLoader(hmi_dataset, batch_size=1, shuffle=True, num_workers=8))
 hinode_iterator = loop(DataLoader(hinode_dataset, batch_size=1, shuffle=True, num_workers=8))
