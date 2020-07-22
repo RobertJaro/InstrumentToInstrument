@@ -198,13 +198,13 @@ class HistoryCallback(Callback):
         self.loss['loss_dis_a'] += [self.trainer.loss_dis_a.cpu().detach().numpy()]
         self.loss['loss_dis_b'] += [self.trainer.loss_dis_b.cpu().detach().numpy()]
         self.loss['loss_gen_diversity'] += [self.trainer.loss_gen_diversity.cpu().detach().numpy()]
-        if (iteration + 1) % 100 == 0:
+        if (iteration + 1) % 1000 == 0:
             self.plotAdversarial()
             self.plotContent()
             self.plotDistortion()
             self.plotNoise()
-        with open(self.history_path, 'wb') as f:
-            pickle.dump(self.loss, f)
+            with open(self.history_path, 'wb') as f:
+                pickle.dump(self.loss, f)
 
     def plotAdversarial(self):
         plt.figure(figsize=(16, 8))
