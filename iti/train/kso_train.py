@@ -12,7 +12,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v5"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v6"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -49,7 +49,7 @@ bab_callback = PlotBAB(q1_dataset.sample(8), trainer, prediction_dir, log_iterat
 
 aba_callback = PlotABA(q2_dataset.sample(8), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300)
-aba_callback.call(0)
+aba_callback.call(-1)
 
 v_callback = VariationPlotBA(q1_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
@@ -65,7 +65,6 @@ trainer.fill_stack([(next(q2_iterator).float().cuda().detach(),
 for it in range(start_it, int(1e8)):
     x_a, x_b = next(q2_iterator), next(q1_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    end = time.time()
     #
     trainer.discriminator_update(x_a, x_b)
     trainer.generator_update(x_a, x_b)

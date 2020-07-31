@@ -1,11 +1,10 @@
+import logging
 from enum import Enum
 
 import torch
-from torch import nn, autograd
-from torch.autograd import Variable
-from torch.nn import LayerNorm
-from torch.nn.utils.spectral_norm import SpectralNorm
-import numpy as np
+from torch import nn
+from torch.nn import LayerNorm, init
+
 
 class DiscriminatorMode(Enum):
     SINGLE = "SINGLE"  # use a single discriminator across all channels
@@ -29,7 +28,7 @@ class GeneratorAB(nn.Module):
         ##################### Decoder #####################
         self.up_blocks = []
         for i in range(n_upsample):
-            self.up_blocks += [UpBlock(dim, dim // 2, norm='in', activation=activ, pad_type=pad_type)]
+            self.up_blocks += [UpBlock(dim, dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             dim //= 2
         self.up_blocks += [
             Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
@@ -97,10 +96,11 @@ class GeneratorBA(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, num_scales=3, depth_discriminator=3, discriminator_mode=DiscriminatorMode.SINGLE):
+    def __init__(self, input_dim, num_scales=3, depth_discriminator=3, discriminator_mode=DiscriminatorMode.SINGLE,
+                 norm='in'):
         self.pad_type = 'reflect'
         self.activ = 'relu'
-        self.norm = 'in'
+        self.norm = norm
         self.depth_discriminator = depth_discriminator
         super().__init__()
         self.input_dim = input_dim
@@ -153,7 +153,7 @@ class Discriminator(nn.Module):
 
         for it, (out0, out1) in enumerate(zip(outs0, outs1)):
             loss += torch.mean((out0 - 0) ** 2) + torch.mean((out1 - 1) ** 2)  # LSGAN
-        return loss
+        return loss / len(outs0)
 
     def calc_gen_loss(self, input_fake):
         # calculate the loss to train G
@@ -161,7 +161,7 @@ class Discriminator(nn.Module):
         loss = 0
         for it, (out0) in enumerate(outs0):
             loss += torch.mean((out0 - 1) ** 2)  # LSGAN
-        return loss
+        return loss / len(outs0)
 
     def calc_content_loss(self, input_real, input_fake):
         loss = []
@@ -302,8 +302,9 @@ class Conv2dBlock(nn.Module):
         if norm == 'bn':
             self.norm = nn.BatchNorm2d(norm_dim)
         elif norm == 'in':
-            # self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True)
             self.norm = nn.InstanceNorm2d(norm_dim)
+        elif norm == 'in_rs':
+            self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.1)
         elif norm == 'ln':
             self.norm = LayerNorm(norm_dim)
         elif norm == 'adain':
@@ -330,11 +331,17 @@ class Conv2dBlock(nn.Module):
             assert 0, "Unsupported activation: {}".format(activation)
 
         # initialize convolution
+        conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias) if not transpose \
+            else nn.ConvTranspose2d(input_dim, output_dim, kernel_size, stride, padding=padding, bias=self.use_bias)
         if norm == 'sn':
-            self.conv = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
+            self.conv = SpectralNorm(conv)
         else:
-            self.conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias) if not transpose \
-                else nn.ConvTranspose2d(input_dim, output_dim, kernel_size, stride, padding=padding, bias=self.use_bias)
+            self.conv = conv
+
+    def init_conv(self, conv):
+        init.kaiming_normal(conv.weight)
+        if conv.bias is not None:
+            conv.bias.data.zero_()
 
     def forward(self, x):
         x = self.conv(self.pad(x))
@@ -375,3 +382,67 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + '(' + str(self.num_features) + ')'
+
+
+class SpectralNorm(nn.Module):
+    """
+    Based on the paper "Spectral Normalization for Generative Adversarial Networks" by Takeru Miyato, Toshiki Kataoka, Masanori Koyama, Yuichi Yoshida
+    and the Pytorch implementation https://github.com/christiancosgrove/pytorch-spectral-normalization-gan
+    """
+    def __init__(self, module, name='weight', power_iterations=1):
+        super(SpectralNorm, self).__init__()
+        self.module = module
+        self.name = name
+        self.power_iterations = power_iterations
+        if not self._made_params():
+            self._make_params()
+
+    def _update_u_v(self):
+        u = getattr(self.module, self.name + "_u")
+        v = getattr(self.module, self.name + "_v")
+        w = getattr(self.module, self.name + "_bar")
+
+        height = w.data.shape[0]
+        for _ in range(self.power_iterations):
+            v.data = l2normalize(torch.mv(torch.t(w.view(height,-1).data), u.data))
+            u.data = l2normalize(torch.mv(w.view(height,-1).data, v.data))
+
+        # sigma = torch.dot(u.data, torch.mv(w.view(height,-1).data, v.data))
+        sigma = u.dot(w.view(height, -1).mv(v))
+        setattr(self.module, self.name, w / sigma.expand_as(w))
+
+    def _made_params(self):
+        try:
+            u = getattr(self.module, self.name + "_u")
+            v = getattr(self.module, self.name + "_v")
+            w = getattr(self.module, self.name + "_bar")
+            return True
+        except AttributeError:
+            return False
+
+
+    def _make_params(self):
+        w = getattr(self.module, self.name)
+
+        height = w.data.shape[0]
+        width = w.view(height, -1).data.shape[1]
+
+        u = nn.Parameter(w.data.new(height).normal_(0, 1), requires_grad=False)
+        v = nn.Parameter(w.data.new(width).normal_(0, 1), requires_grad=False)
+        u.data = l2normalize(u.data)
+        v.data = l2normalize(v.data)
+        w_bar = nn.Parameter(w.data)
+
+        del self.module._parameters[self.name]
+
+        self.module.register_parameter(self.name + "_u", u)
+        self.module.register_parameter(self.name + "_v", v)
+        self.module.register_parameter(self.name + "_bar", w_bar)
+
+
+    def forward(self, *args):
+        self._update_u_v()
+        return self.module.forward(*args)
+
+def l2normalize(v, eps=1e-12):
+    return v / (v.norm() + eps)

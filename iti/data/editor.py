@@ -237,7 +237,7 @@ class NormalizeExposureEditor(Editor):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # ignore warnings
             data = s_map.data
-            data = data / s_map.exposure_time
+            data = data / s_map.exposure_time.to(u.s).value
             data = data.astype(np.float32)
             return Map(data, s_map.meta)
 
@@ -359,8 +359,8 @@ class FeaturePatchEditor(Editor):
             center = s_map.pixel_to_world(pixel_pos[0], pixel_pos[1])
 
             arcs_frame = s_map.scale[0] * (self.patch_shape[0] * u.pix)
-            s_map = s_map.submap(SkyCoord([center.Tx-arcs_frame, center.Tx+arcs_frame] * u.arcsec,
-                                          [center.Ty-arcs_frame, center.Ty+arcs_frame] * u.arcsec,
+            s_map = s_map.submap(SkyCoord([center.Tx-arcs_frame, center.Tx+arcs_frame],
+                                          [center.Ty-arcs_frame, center.Ty+arcs_frame],
                                           frame=s_map.coordinate_frame))
 
             return s_map
@@ -370,6 +370,38 @@ class RandomPatchEditor(Editor):
         self.patch_shape = patch_shape
 
     def call(self, data, **kwargs):
+        assert data.shape[1] >= self.patch_shape[0], 'Invalid data shape: %s' % str(data.shape)
+        assert data.shape[2] >= self.patch_shape[1], 'Invalid data shape: %s' % str(data.shape)
         x = randint(0, data.shape[1] - self.patch_shape[0])
         y = randint(0, data.shape[2] - self.patch_shape[1])
-        return data[:, x:x + self.patch_shape[0], y:y + self.patch_shape[1]]
+        patch = data[:, x:x + self.patch_shape[0], y:y + self.patch_shape[1]]
+        assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
+        return patch
+
+class EITCheckEditor(Editor):
+
+    def call(self, s_map, **kwargs):
+        assert np.all(np.logical_not(np.isnan(s_map.data))), 'Found missing block %s' % s_map.date.datetime.isoformat()
+        assert 'N_MISSING_BLOCKS =    0' in s_map.meta['comment'], 'Found missing block %s: %s' % (s_map.date.datetime.isoformat(), s_map.meta['comment'])
+        return s_map
+
+class PaddingEditor(Editor):
+    def __init__(self, patch_shape):
+        self.patch_shape = patch_shape
+
+
+    def call(self, data, **kwargs):
+        s = data.shape
+        p = self.patch_shape
+        x_pad = (p[0] - s[-2]) / 2
+        y_pad = (p[1] - s[-1]) / 2
+        pad = [(int(np.floor(x_pad)), int(np.ceil(x_pad))),
+                (int(np.floor(y_pad)), int(np.ceil(y_pad)))]
+        if len(s) == 3:
+            pad.insert(0, (0,0))
+        return np.pad(data, pad, 'constant', constant_values=np.min(data))
+
+class PassEditor(Editor):
+
+    def call(self, data, **kwargs):
+        return data

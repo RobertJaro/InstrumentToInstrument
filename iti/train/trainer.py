@@ -5,8 +5,9 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from torch import nn, autograd
+from torch import nn
 from torch.autograd import Variable
+from torch.nn import InstanceNorm2d
 from torch.utils.data import DataLoader
 
 from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
@@ -14,9 +15,9 @@ from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstima
 
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=9,
-                 activation='tanh', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
+                 activation='tanh', norm='in', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=3, depth_noise=4,
-                 lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
+                 lambda_discriminator=3, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
                  learning_rate=1e-4):
         super().__init__()
@@ -32,6 +33,7 @@ class Trainer(nn.Module):
         logging.info("Residual Blocks:   %d" % res_blocks)
         logging.info("Base Number of Filters:   %d" % n_filters)
         logging.info("Activation:   %s" % str(activation))
+        logging.info("Normalization:   %s" % str(norm))
         logging.info("Learning Rate:   %f" % learning_rate)
         logging.info("Lambda Discriminator Loss:   %f" % lambda_discriminator)
         logging.info("Lambda Reconstruction Loss:   %f" % lambda_reconstruction)
@@ -65,12 +67,14 @@ class Trainer(nn.Module):
 
         ############################## INIT NETWORKS ###############################
         self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator,
-                                  depth_generator + upsampling, n_filters)  # generator for domain a-->b
+                                  depth_generator + upsampling, n_filters, norm=norm)  # generator for domain a-->b
         self.gen_ba = GeneratorBA(input_dim_b, noise_dim, input_dim_a, upsampling, depth_noise,
-                                  n_filters)  # generator for domain b-->a
-        self.dis_a = Discriminator(input_dim_a, n_discriminators, depth_discriminator, discriminator_mode)  # discriminator for domain a
-        self.dis_b = Discriminator(input_dim_b, n_discriminators, depth_discriminator, discriminator_mode)  # discriminator for domain b
-        self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim)
+                                  n_filters, norm=norm)  # generator for domain b-->a
+        self.dis_a = Discriminator(input_dim_a, n_discriminators, depth_discriminator, discriminator_mode,
+                                   norm=norm)  # discriminator for domain a
+        self.dis_b = Discriminator(input_dim_b, n_discriminators, depth_discriminator, discriminator_mode,
+                                   norm=norm)  # discriminator for domain b
+        self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim, norm=norm)
         self.downsample = nn.AvgPool2d(2 ** upsampling)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2 ** upsampling)
 
@@ -83,6 +87,10 @@ class Trainer(nn.Module):
 
         # Training utils
         self.gen_stack = []
+        self.frozen_norm = False
+
+    def noise_criterion(self, input, target):
+        return torch.mean(torch.abs(input - target))
 
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
@@ -148,10 +156,6 @@ class Trainer(nn.Module):
         # noise 2
         n_aba = self.estimator_noise(x_aba)
 
-        # diversity
-        n_gen_2 = self.generateNoise(x_b)
-        x_ba_div = self.gen_ba(x_b, n_gen_2)
-
         # reconstruction loss
         self.loss_gen_a_identity = self.recon_criterion(x_a_identity, x_a)
         self.loss_gen_b_identity = self.recon_criterion(x_b_identity, x_b)
@@ -166,13 +170,18 @@ class Trainer(nn.Module):
         self.loss_gen_a_identity_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_a_identity))
         self.loss_gen_b_identity_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_b_identity))
         # Noise loss
-        self.loss_gen_ba_noise = self.recon_criterion(n_ba, n_gen)
-        self.loss_gen_aba_noise = self.recon_criterion(n_aba, n_a)
-        self.loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
+        self.loss_gen_ba_noise = self.noise_criterion(n_ba, n_gen)
+        self.loss_gen_aba_noise = self.noise_criterion(n_aba, n_a)
+        self.loss_gen_a_identity_noise = self.noise_criterion(n_a_identity, n_a)
         # Diversity loss
-        diversity_diff = self.dis_a.calc_content_loss(x_ba, x_ba_div)
-        self.loss_gen_diversity = torch.mean(
-            - torch.log(diversity_diff / (torch.mean(torch.abs(n_gen - n_gen_2), [1, 2, 3]))))
+        if self.lambda_diversity > 0:
+            n_gen_2 = self.generateNoise(x_b)
+            x_ba_div = self.gen_ba(x_b, n_gen_2)
+            diversity_diff = self.dis_a.calc_content_loss(x_ba, x_ba_div)
+            self.loss_gen_diversity = torch.mean(
+                - torch.log((diversity_diff + 1e-6) / (torch.mean(torch.abs(n_gen - n_gen_2), [1, 2, 3]) + 1e-6)))
+        else:
+            self.loss_gen_diversity = torch.tensor(0.0)
         # total loss
         self.loss_gen_total = self.lambda_reconstruction_id * (self.loss_gen_a_identity + self.loss_gen_b_identity) + \
                               self.lambda_reconstruction * (self.loss_gen_a_translate + self.loss_gen_b_translate) + \
@@ -209,7 +218,7 @@ class Trainer(nn.Module):
         # D loss
         self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba, x_a)
         self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab, x_b)
-        self.loss_dis_total = self.loss_dis_a + self.loss_dis_b
+        self.loss_dis_total = self.lambda_discriminator * (self.loss_dis_a + self.loss_dis_b)
         self.loss_dis_total.backward()
         self.dis_opt.step()
 
@@ -219,13 +228,13 @@ class Trainer(nn.Module):
                                     x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
         return n_gen
 
-    def resume(self, checkpoint_dir):
+    def resume(self, checkpoint_dir, cpu=False):
         # Load generators
         model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'gen_*.pt')))
         if len(model_names) == 0:
             return 0
         last_model_name = model_names[-1]
-        state_dict = torch.load(last_model_name)
+        state_dict = torch.load(last_model_name, map_location='cpu' if cpu else None)
         self.gen_ab.load_state_dict(state_dict['a'])
         self.gen_ba.load_state_dict(state_dict['b'])
         self.estimator_noise.load_state_dict(state_dict['e'])
@@ -235,11 +244,11 @@ class Trainer(nn.Module):
         if len(model_names) == 0:
             return 0
         last_model_name = model_names[-1]
-        state_dict = torch.load(last_model_name)
+        state_dict = torch.load(last_model_name, map_location='cpu' if cpu else None)
         self.dis_a.load_state_dict(state_dict['a'])
         self.dis_b.load_state_dict(state_dict['b'])
         # Load optimizers
-        state_dict = torch.load(os.path.join(checkpoint_dir, 'optimizer.pt'))
+        state_dict = torch.load(os.path.join(checkpoint_dir, 'optimizer.pt'), map_location='cpu' if cpu else None)
         self.dis_opt.load_state_dict(state_dict['dis'])
         self.gen_opt.load_state_dict(state_dict['gen'])
         print('Resume from iteration %d' % iterations)
@@ -255,6 +264,18 @@ class Trainer(nn.Module):
                     'e': self.estimator_noise.state_dict()}, gen_name)
         torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
         torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
+
+    def freeze_norm(self):
+        if self.frozen_norm:
+            return  # already frozen
+
+        def freeze(module):
+            if isinstance(module, InstanceNorm2d):
+                module.momentum = 0
+                module.eval()
+
+        self.apply(freeze)
+        self.frozen_norm = True
 
 
 def convertSet(data_set, store_path):

@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from datetime import datetime
 from random import sample
 
 from sunpy.visualization.colormaps import cm
@@ -18,7 +19,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v5"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v8"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -30,9 +31,8 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL,
-                  lambda_diversity=0, lambda_reconstruction=1, lambda_reconstruction_id=1, lambda_discriminator=0.1,
-                  lambda_content=1, lambda_content_id=1, )
+trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL, lambda_diversity=0, norm='in_rs',
+                  lambda_reconstruction=10, lambda_reconstruction_id=1)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -89,10 +89,6 @@ full_disc_bab_callback = PlotBAB(SDODataset("/gss/r.jarolim/data/sdo/valid", pat
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_bab')
 full_disc_bab_callback.call(0)
 
-small_fov_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(32, 32)).sample(8), trainer,
-                             prediction_dir, log_iteration=log_iteration,
-                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='small_fov')
-
 v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
@@ -105,9 +101,10 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr
 #                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
+    if it > 100000:
+        trainer.freeze_norm()
     x_a, x_b = next(soho_iterator), next(sdo_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    end = time.time()
     #
     trainer.discriminator_update(x_a, x_b)
     trainer.generator_update(x_a, x_b)

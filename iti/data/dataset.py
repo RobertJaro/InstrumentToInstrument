@@ -9,13 +9,15 @@ from typing import List
 
 import numpy as np
 from astropy.visualization import ImageNormalize, LinearStretch
+from sklearn.utils import shuffle
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
     MapToDataEditor, PyramidRescaleEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, RandomPatchEditor, NanEditor, LoadFITSEditor, \
-    KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor
+    KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
+    PassEditor
 
 
 class Norm(Enum):
@@ -41,8 +43,16 @@ class BaseDataset(Dataset):
         return self.convertData(self.data[idx])
 
     def sample(self, n_samples):
-        sample_data = random.sample(self.data, n_samples)
-        return np.array(Pool(8).map(self.convertData, sample_data))
+        it = DataLoader(self, batch_size=1, shuffle=True, num_workers=4).__iter__()
+        samples = []
+        while len(samples) <  n_samples:
+            try:
+                samples.append(next(it).detach().numpy()[0])
+            except Exception as ex:
+                logging.error(str(ex))
+                continue
+        del it
+        return np.array(samples)
 
     def convertData(self, data):
         kwargs = {}
@@ -82,14 +92,22 @@ class StorageDataset(Dataset):
         return data
 
     def sample(self, n_samples):
-        indices = random.sample(range(len(self.dataset)), n_samples)
-        return np.array(Pool(8).map(self.__getitem__, indices))
+        it = DataLoader(self, batch_size=1, shuffle=True, num_workers=4).__iter__()
+        samples = []
+        while len(samples) <  n_samples:
+            try:
+                samples.append(next(it).detach().numpy()[0])
+            except Exception as ex:
+                logging.error(str(ex))
+                continue
+        del it
+        return np.array(samples)
 
     def convert(self, n_worker):
         it = DataLoader(self, batch_size=1, shuffle=False, num_workers=n_worker).__iter__()
         for _ in tqdm(range(len(self.dataset))):
             try:
-                it.next()
+                next(it)
                 gc.collect()
             except StopIteration:
                 return
@@ -169,6 +187,7 @@ class EITDataset(BaseDataset):
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
+                   EITCheckEditor(),
                    NormalizeRadiusEditor(1024),
                    MapToDataEditor(),
                    PyramidRescaleEditor(1024 / resolution),
@@ -229,28 +248,29 @@ class HMIDataset(BaseDataset):
 
 class HMIContinuumDataset(BaseDataset):
 
-    def __init__(self, path, patch_shape, ext='*.fits'):
+    def __init__(self, path, patch_shape=None, ext='*.fits', **kwargs):
         norm = sdo_norms['continuum']
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
                    ScaleEditor(0.6),
-                   FeaturePatchEditor(patch_shape),
+                   FeaturePatchEditor(patch_shape) if patch_shape is not None else PassEditor(),
                    MapToDataEditor(),
                    NanEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
-        super().__init__(map_paths, editors=editors)
+        super().__init__(map_paths, editors=editors, **kwargs)
 
 
 class HinodeDataset(BaseDataset):
 
     def __init__(self, path, ext='*.fits'):
-        norm = ImageNormalize(vmin=0, vmax=4000, stretch=LinearStretch(), clip=True)
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+        norm = ImageNormalize(vmin=0, vmax=50000, stretch=LinearStretch(), clip=True)
+        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True)) if isinstance(path, str) else path
 
         editors = [LoadMapEditor(),
                    ScaleEditor(0.15),
+                   NormalizeExposureEditor(),
                    MapToDataEditor(),
                    NanEditor(),
                    NormalizeEditor(norm),

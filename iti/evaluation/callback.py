@@ -44,6 +44,7 @@ class BasicPlot(Callback):
         columns = len(data[0])
 
         f, axarr = plt.subplots(rows, columns, figsize=(3 * columns, 3 * rows))
+        axarr = np.reshape(axarr, (rows, columns))
         for i in range(rows):
             for j in range(columns):
                 plot_settings = self.plot_settings[j].copy()
@@ -198,7 +199,7 @@ class HistoryCallback(Callback):
         self.loss['loss_dis_a'] += [self.trainer.loss_dis_a.cpu().detach().numpy()]
         self.loss['loss_dis_b'] += [self.trainer.loss_dis_b.cpu().detach().numpy()]
         self.loss['loss_gen_diversity'] += [self.trainer.loss_gen_diversity.cpu().detach().numpy()]
-        if (iteration + 1) % 1000 == 0:
+        if (iteration + 1) % 100 == 0:
             self.plotAdversarial()
             self.plotContent()
             self.plotDistortion()
