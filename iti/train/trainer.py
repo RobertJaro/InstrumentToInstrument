@@ -228,9 +228,10 @@ class Trainer(nn.Module):
                                     x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
         return n_gen
 
-    def resume(self, checkpoint_dir, cpu=False):
+    def resume(self, checkpoint_dir, cpu=False, iteration=None):
         # Load generators
         model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'gen_*.pt')))
+        model_names = model_names if iteration is None else [m for m in model_names if str(iteration) in m]
         if len(model_names) == 0:
             return 0
         last_model_name = model_names[-1]
@@ -238,9 +239,10 @@ class Trainer(nn.Module):
         self.gen_ab.load_state_dict(state_dict['a'])
         self.gen_ba.load_state_dict(state_dict['b'])
         self.estimator_noise.load_state_dict(state_dict['e'])
-        iterations = int(last_model_name[-11:-3])
+        last_iteration = int(last_model_name[-11:-3])
         # Load discriminators
         model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'dis_*.pt')))
+        model_names = model_names if iteration is None else [m for m in model_names if str(iteration) in m]
         if len(model_names) == 0:
             return 0
         last_model_name = model_names[-1]
@@ -251,8 +253,8 @@ class Trainer(nn.Module):
         state_dict = torch.load(os.path.join(checkpoint_dir, 'optimizer.pt'), map_location='cpu' if cpu else None)
         self.dis_opt.load_state_dict(state_dict['dis'])
         self.gen_opt.load_state_dict(state_dict['gen'])
-        print('Resume from iteration %d' % iterations)
-        return iterations
+        print('Resume from iteration %d' % last_iteration)
+        return last_iteration
 
     def save(self, checkpoint_dir, iterations):
         # Save generators, discriminators, and optimizers

@@ -1,4 +1,5 @@
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 from matplotlib import pyplot as plt
@@ -13,7 +14,7 @@ from iti.train.trainer import Trainer
 
 sdo_shape = 2048
 soho_shape = 1024
-base_path = "/gss/r.jarolim/prediction/iti/soho_sdo_v7"
+base_path = "/gss/r.jarolim/prediction/iti/soho_sdo_v10"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid")
@@ -21,11 +22,12 @@ soho_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
 loader = DataLoader(soho_dataset, batch_size=1, shuffle=True)
 iter = loader.__iter__()
 
-trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL, lambda_diversity=0)
-iteration = trainer.resume(base_path, cpu=True)
+trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL, lambda_diversity=0, norm='in_rs')
+trainer.cuda()
+iteration = trainer.resume(base_path)
 
 with torch.no_grad():
-    soho_img = next(iter).float()
+    soho_img = next(iter).float().cuda()
     sdo_img = trainer.forwardAB(soho_img)
     soho_img = soho_img.detach().cpu().numpy()
     sdo_img = sdo_img.detach().cpu().numpy()

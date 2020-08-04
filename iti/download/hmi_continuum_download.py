@@ -14,7 +14,7 @@ from dateutil.parser import parse
 from sunpy.map import Map
 
 
-class SDOFetcher:
+class HMIContinuumFetcher:
 
     def __init__(self, ds_path, num_worker_threads=8):
         self.ds_path = ds_path
@@ -94,6 +94,6 @@ class SDOFetcher:
         logging.info('Finished: %s' % id)
 
 if __name__ == '__main__':
-    fetcher = SDOFetcher(ds_path="/gss/r.jarolim/data/hmi_continuum")
+    fetcher = HMIContinuumFetcher(ds_path="/gss/r.jarolim/data/hmi_continuum")
     fetcher.fetchDates([datetime(2010, 3, 29) + i * timedelta(days=1) for i in
                         range((datetime.now() - datetime(2010, 3, 29)) // timedelta(days=1))])

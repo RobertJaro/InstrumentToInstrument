@@ -84,7 +84,7 @@ aba_callback.call(0)
 v_callback = VariationPlotBA(hinode_dataset.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-lr_scheduler = LRScheduler(trainer, 50000)
+lr_scheduler = LRScheduler(trainer, 30000)
 
 callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
 
@@ -93,8 +93,6 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr
 #                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 100000:
-        trainer.freeze_norm()
     x_a, x_b = next(hmi_iterator), next(hinode_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     #

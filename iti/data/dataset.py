@@ -17,7 +17,7 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     MapToDataEditor, PyramidRescaleEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, RandomPatchEditor, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
-    PassEditor
+    PassEditor, BrightestPixelPatchEditor
 
 
 class Norm(Enum):
@@ -161,7 +161,7 @@ class SDODataset(BaseDataset):
                      ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
-            editors.append(RandomPatchEditor(patch_shape))
+            editors.append(BrightestPixelPatchEditor(patch_shape))
         super().__init__(range(len(data_sets[0])), editors)
 
 
@@ -176,7 +176,7 @@ class SOHODataset(BaseDataset):
                      ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
-            editors.append(RandomPatchEditor(patch_shape))
+            editors.append(BrightestPixelPatchEditor(patch_shape))
         super().__init__(range(len(data_sets[0])), editors)
 
 

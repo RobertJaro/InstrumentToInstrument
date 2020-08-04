@@ -378,6 +378,30 @@ class RandomPatchEditor(Editor):
         assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
         return patch
 
+class BrightestPixelPatchEditor(Editor):
+    def __init__(self, patch_shape, idx=0):
+        self.patch_shape = patch_shape
+        self.idx = idx
+
+    def call(self, data, **kwargs):
+        assert data.shape[1] >= self.patch_shape[0], 'Invalid data shape: %s' % str(data.shape)
+        assert data.shape[2] >= self.patch_shape[1], 'Invalid data shape: %s' % str(data.shape)
+
+        smoothed = ndimage.gaussian_filter(data[self.idx], sigma=5)
+        pixel_pos = np.argwhere(smoothed == np.nanmax(smoothed))
+        pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
+        pixel_pos = np.min([pixel_pos[0], smoothed.shape[0] - self.patch_shape[0] // 2]), np.min(
+            [pixel_pos[1], smoothed.shape[1] - self.patch_shape[1] // 2])
+        pixel_pos = np.max([pixel_pos[0], self.patch_shape[0] // 2]), np.max([pixel_pos[1], self.patch_shape[1] // 2])
+
+        x = pixel_pos[0]
+        y = pixel_pos[1]
+        patch = data[:,
+                x - int(np.floor(self.patch_shape[0] / 2)):x + int(np.ceil(self.patch_shape[0] / 2)),
+                y - int(np.floor(self.patch_shape[1] / 2)):y + int(np.ceil(self.patch_shape[1] / 2)), ]
+        assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
+        return patch
+
 class EITCheckEditor(Editor):
 
     def call(self, s_map, **kwargs):
