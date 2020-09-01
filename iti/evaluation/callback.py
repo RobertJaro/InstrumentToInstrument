@@ -7,8 +7,10 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-from iti.train.trainer import Trainer
+from iti.train.trainer import Trainer, loop
 
 
 class Callback(ABC):
@@ -170,7 +172,6 @@ class HistoryCallback(Callback):
                      'loss_gen_b_content': [],
                      'loss_gen_a_identity_content': [],
                      'loss_gen_b_identity_content': [],
-                     'loss_gen_ba_noise': [],
                      'loss_gen_aba_noise': [],
                      'loss_gen_a_identity_noise': [],
                      'loss_dis_a': [],
@@ -193,7 +194,6 @@ class HistoryCallback(Callback):
         self.loss['loss_gen_b_content'] += [self.trainer.loss_gen_b_content.cpu().detach().numpy()]
         self.loss['loss_gen_a_identity_content'] += [self.trainer.loss_gen_a_identity_content.cpu().detach().numpy()]
         self.loss['loss_gen_b_identity_content'] += [self.trainer.loss_gen_b_identity_content.cpu().detach().numpy()]
-        self.loss['loss_gen_ba_noise'] += [self.trainer.loss_gen_ba_noise.cpu().detach().numpy()]
         self.loss['loss_gen_aba_noise'] += [self.trainer.loss_gen_aba_noise.cpu().detach().numpy()]
         self.loss['loss_gen_a_identity_noise'] += [self.trainer.loss_gen_a_identity_noise.cpu().detach().numpy()]
         self.loss['loss_dis_a'] += [self.trainer.loss_dis_a.cpu().detach().numpy()]
@@ -230,7 +230,6 @@ class HistoryCallback(Callback):
     def plotNoise(self):
         plt.figure(figsize=(16, 8))
         plt.plot(self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
-        plt.plot(self.loss['loss_gen_ba_noise'], label='Noise BA')
         plt.plot(self.loss['loss_gen_aba_noise'], label='Noise ABA')
         plt.plot(self.loss['loss_gen_diversity'], label='Diversity')
         plt.legend()
@@ -245,6 +244,134 @@ class HistoryCallback(Callback):
         plt.plot(self.loss['loss_gen_b_identity_content'], label='MAE B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_distortion.jpg"), dpi=100)
+        plt.close()
+
+class ValidationHistoryCallback(Callback):
+    def __init__(self, trainer: Trainer, data_set_A, data_set_B, path, log_iteration=1000):
+        self.trainer = trainer
+        self.path = path
+        self.history_path = os.path.join(path, 'valid_history.pickle')
+        self.data_set_A = data_set_A
+        self.data_set_B = data_set_B
+
+        self.loss = {'loss_gen_a_identity': [],
+                     'loss_gen_b_identity': [],
+                     'loss_gen_a_translate': [],
+                     'loss_gen_b_translate': [],
+                     'loss_gen_adv_a': [],
+                     'loss_gen_adv_b': [],
+                     'loss_gen_a_content': [],
+                     'loss_gen_b_content': [],
+                     'loss_gen_a_identity_content': [],
+                     'loss_gen_b_identity_content': [],
+                     'loss_gen_aba_noise': [],
+                     'loss_gen_a_identity_noise': [],
+                     'loss_dis_a': [],
+                     'loss_dis_b': [],
+                     'loss_gen_diversity': []
+                     }
+        if os.path.exists(self.history_path):
+            with open(self.history_path, 'rb') as f:
+                self.loss = pickle.load(f)
+        super().__init__(log_iteration)
+
+    def call(self, iteration, **kwargs):
+        loss = {'loss_gen_a_identity': [],
+                'loss_gen_b_identity': [],
+                'loss_gen_a_translate': [],
+                'loss_gen_b_translate': [],
+                'loss_gen_adv_a': [],
+                'loss_gen_adv_b': [],
+                'loss_gen_a_content': [],
+                'loss_gen_b_content': [],
+                'loss_gen_a_identity_content': [],
+                'loss_gen_b_identity_content': [],
+                'loss_gen_aba_noise': [],
+                'loss_gen_a_identity_noise': [],
+                'loss_dis_a': [],
+                'loss_dis_b': [],
+                'loss_gen_diversity': []
+                }
+        dl_A, dl_B = DataLoader(self.data_set_A, batch_size=4, shuffle=False, num_workers=4),\
+                     DataLoader(self.data_set_B, batch_size=4, shuffle=False, num_workers=4)
+        for x_a, x_b in tqdm(zip(dl_A, dl_B)):
+            x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
+            self.trainer.validate(x_a, x_b)
+            loss['loss_gen_a_identity'] += [self.trainer.valid_loss_gen_a_identity.cpu().detach().numpy()]
+            loss['loss_gen_b_identity'] += [self.trainer.valid_loss_gen_b_identity.cpu().detach().numpy()]
+            loss['loss_gen_a_translate'] += [self.trainer.valid_loss_gen_a_translate.cpu().detach().numpy()]
+            loss['loss_gen_b_translate'] += [self.trainer.valid_loss_gen_b_translate.cpu().detach().numpy()]
+            loss['loss_gen_adv_a'] += [self.trainer.valid_loss_gen_adv_a.cpu().detach().numpy()]
+            loss['loss_gen_adv_b'] += [self.trainer.valid_loss_gen_adv_b.cpu().detach().numpy()]
+            loss['loss_gen_a_content'] += [self.trainer.valid_loss_gen_a_content.cpu().detach().numpy()]
+            loss['loss_gen_b_content'] += [self.trainer.valid_loss_gen_b_content.cpu().detach().numpy()]
+            loss['loss_gen_a_identity_content'] += [self.trainer.valid_loss_gen_a_identity_content.cpu().detach().numpy()]
+            loss['loss_gen_b_identity_content'] += [self.trainer.valid_loss_gen_b_identity_content.cpu().detach().numpy()]
+            loss['loss_gen_aba_noise'] += [self.trainer.valid_loss_gen_aba_noise.cpu().detach().numpy()]
+            loss['loss_gen_a_identity_noise'] += [self.trainer.valid_loss_gen_a_identity_noise.cpu().detach().numpy()]
+            loss['loss_dis_a'] += [self.trainer.valid_loss_dis_a.cpu().detach().numpy()]
+            loss['loss_dis_b'] += [self.trainer.valid_loss_dis_b.cpu().detach().numpy()]
+
+        self.loss['loss_gen_a_identity'].append(np.mean(loss['loss_gen_a_identity']))
+        self.loss['loss_gen_b_identity'].append(np.mean(loss['loss_gen_b_identity']))
+        self.loss['loss_gen_a_translate'].append(np.mean(loss['loss_gen_a_translate']))
+        self.loss['loss_gen_b_translate'].append(np.mean(loss['loss_gen_b_translate']))
+        self.loss['loss_gen_adv_a'].append(np.mean(loss['loss_gen_adv_a']))
+        self.loss['loss_gen_adv_b'].append(np.mean(loss['loss_gen_adv_b']))
+        self.loss['loss_gen_a_content'].append(np.mean(loss['loss_gen_a_content']))
+        self.loss['loss_gen_b_content'].append(np.mean(loss['loss_gen_b_content']))
+        self.loss['loss_gen_a_identity_content'].append(np.mean(loss['loss_gen_a_identity_content']))
+        self.loss['loss_gen_b_identity_content'].append(np.mean(loss['loss_gen_b_identity_content']))
+        self.loss['loss_gen_aba_noise'].append(np.mean(loss['loss_gen_aba_noise']))
+        self.loss['loss_gen_a_identity_noise'].append(np.mean(loss['loss_gen_a_identity_noise']))
+        self.loss['loss_dis_a'].append(np.mean(loss['loss_dis_a']))
+        self.loss['loss_dis_b'].append(np.mean(loss['loss_dis_b']))
+
+
+        self.plotAdversarial()
+        self.plotContent()
+        self.plotDistortion()
+        self.plotNoise()
+        with open(self.history_path, 'wb') as f:
+            pickle.dump(self.loss, f)
+
+    def plotAdversarial(self):
+        plt.figure(figsize=(16, 8))
+        plt.plot(self.loss['loss_gen_adv_a'], label='Generator A')
+        plt.plot(self.loss['loss_gen_adv_b'], label='Generator B')
+        plt.plot(self.loss['loss_dis_a'], label='Discriminator A')
+        plt.plot(self.loss['loss_dis_b'], label='Discriminator B')
+        plt.legend()
+        plt.savefig(os.path.join(self.path, "valid_progress_adversarial.jpg"), dpi=100)
+        plt.close()
+
+    def plotContent(self):
+        plt.figure(figsize=(16, 8))
+        plt.plot(self.loss['loss_gen_a_content'], label='Content A')
+        plt.plot(self.loss['loss_gen_b_content'], label='Content B')
+        plt.plot(self.loss['loss_gen_a_identity_content'], label='Content A Identity')
+        plt.plot(self.loss['loss_gen_b_identity_content'], label='Content B Identity')
+        plt.legend()
+        plt.savefig(os.path.join(self.path, "valid_progress_content.jpg"), dpi=100)
+        plt.close()
+
+    def plotNoise(self):
+        plt.figure(figsize=(16, 8))
+        plt.plot(self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
+        plt.plot(self.loss['loss_gen_aba_noise'], label='Noise ABA')
+        plt.plot(self.loss['loss_gen_diversity'], label='Diversity')
+        plt.legend()
+        plt.savefig(os.path.join(self.path, "valid_progress_noise.jpg"), dpi=100)
+        plt.close()
+
+    def plotDistortion(self):
+        plt.figure(figsize=(16, 8))
+        plt.plot(self.loss['loss_gen_a_translate'], label='MAE A')
+        plt.plot(self.loss['loss_gen_b_translate'], label='MAE B')
+        plt.plot(self.loss['loss_gen_a_identity_content'], label='MAE A Identity')
+        plt.plot(self.loss['loss_gen_b_identity_content'], label='MAE B Identity')
+        plt.legend()
+        plt.savefig(os.path.join(self.path, "valid_progress_distortion.jpg"), dpi=100)
         plt.close()
 
 class ProgressCallback(Callback):

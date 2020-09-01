@@ -243,10 +243,11 @@ class NormalizeExposureEditor(Editor):
 
 
 class NormalizeRadiusEditor(Editor):
-    def __init__(self, resolution, padding_factor=0.1):
+    def __init__(self, resolution, padding_factor=0.1, crop=True, **kwargs):
         self.padding_factor = padding_factor
         self.resolution = resolution
-        super(NormalizeRadiusEditor, self).__init__()
+        self.crop = crop
+        super(NormalizeRadiusEditor, self).__init__(**kwargs)
 
     def call(self, s_map, **kwargs):
         with warnings.catch_warnings():
@@ -255,10 +256,11 @@ class NormalizeRadiusEditor(Editor):
             r_obs_pix = (1 + self.padding_factor) * r_obs_pix
             scale_factor = self.resolution / (2 * r_obs_pix.value)
             s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=s_map.min(), order=3)
-            arcs_frame = (self.resolution / 2) * s_map.scale[0].value
-            s_map = s_map.submap(SkyCoord([-arcs_frame, arcs_frame] * u.arcsec,
-                                          [-arcs_frame, arcs_frame] * u.arcsec,
-                                          frame=s_map.coordinate_frame))
+            if self.crop:
+                arcs_frame = (self.resolution / 2) * s_map.scale[0].value
+                s_map = s_map.submap(SkyCoord([-arcs_frame, arcs_frame] * u.arcsec,
+                                              [-arcs_frame, arcs_frame] * u.arcsec,
+                                              frame=s_map.coordinate_frame))
             s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
             return s_map
 

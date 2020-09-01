@@ -19,7 +19,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
 from iti.train.trainer import Trainer, loop
 import numpy as np
 
-base_dir = "/gss/r.jarolim/prediction/iti/hmi_hinode_v5"
+base_dir = "/gss/r.jarolim/prediction/iti/hmi_hinode_v6"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -31,7 +31,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, upsampling=2, lambda_diversity=0, norm='in_rs')
+trainer = Trainer(1, 1, upsampling=2, norm='in_rs')
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 

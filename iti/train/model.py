@@ -8,7 +8,7 @@ from torch.nn import LayerNorm, init
 
 class DiscriminatorMode(Enum):
     SINGLE = "SINGLE"  # use a single discriminator across all channels
-    PER_CHANNEL = "PER_CHANNEL"  # use a discriminator per channel and one for the the combined channels
+    CHANNELS = "CHANNELS"  # use a discriminator per channel and one for the the combined channels
     SINGLE_PER_CHANNEL = "SINGLE_PER_CHANNEL"  # use a single discriminator for each channel and one for the combined channels
 
 
@@ -18,8 +18,8 @@ class GeneratorAB(nn.Module):
                  norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
         super().__init__()
         ##################### Encoder #####################
+        self.in_block = Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)
         self.down_blocks = []
-        self.down_blocks += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
         for i in range(n_downsample):
             self.down_blocks += [DownBlock(dim, 2 * dim, norm=norm, activation=activ, pad_type=pad_type)]
             dim *= 2
@@ -27,45 +27,54 @@ class GeneratorAB(nn.Module):
         self.res_blocks = ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)
         ##################### Decoder #####################
         self.up_blocks = []
-        for i in range(n_upsample):
-            self.up_blocks += [UpBlock(dim, dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
+        s_dim = 0
+        for i in range(n_downsample):
+            self.up_blocks += [UpBlock(dim + s_dim, dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             dim //= 2
-        self.up_blocks += [
-            Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
+            s_dim = dim
+        for i in range(n_upsample - n_downsample):
+            self.up_blocks += [UpBlock(dim + s_dim, dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
+            dim //= 2
+            s_dim = 0
+        self.out_block = Conv2dBlock(dim + s_dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)
 
-        self.model = nn.Sequential(*self.down_blocks, self.res_blocks, *self.up_blocks)
+        self.model = nn.ModuleList([self.in_block, *self.down_blocks, self.res_blocks, *self.up_blocks, self.out_block])
 
     def forward(self, x):
         # encode
+        x = self.in_block(x)
+
         skip_connections = []
         for down in self.down_blocks:
-            x = down(x)
             skip_connections.append(x)
+            x = down(x)
         # transform
         x = self.res_blocks(x)
         # decode
         for up in self.up_blocks:
-            if len(skip_connections) > 0:
-                x += skip_connections.pop(-1)
             x = up(x)
+            if len(skip_connections) > 0:
+                x = torch.cat([x, skip_connections.pop(-1)], 1)
+
+        x = self.out_block(x)
         return x
 
 
 class GeneratorBA(nn.Module):
     def __init__(self, input_dim, noise_dim, output_dim, n_downsample, n_upsample, dim=64, n_res=9,
                  norm='in', activ='relu', pad_type='reflect', output_activ='tanh'):
-        assert n_upsample >= 2, 'Found noise depth %d, but minimum is 2' % n_upsample
+        assert n_upsample >= 3, 'Found noise depth %d, but minimum is 3' % n_upsample
         super().__init__()
-        i_dim = int(dim / 2 ** (n_downsample + 1))
+        i_dim = int(dim / 2 ** n_downsample)
         self.image_blocks = []
         self.image_blocks += [Conv2dBlock(input_dim, i_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
         for i in range(n_downsample):
             self.image_blocks += [DownBlock(i_dim, 2 * i_dim, norm=norm, activation=activ, pad_type=pad_type)]
             i_dim *= 2
 
-        n_dim = int(dim * 2 ** 2)
+        n_dim = int(dim * 2 ** 3)
         self.noise_blocks = []
-        self.noise_blocks += [Conv2dBlock(noise_dim, n_dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        self.noise_blocks += [Conv2dBlock(noise_dim, n_dim, 3, 1, 1, norm=norm, activation=activ, pad_type=pad_type)]
         self.noise_blocks += [ResBlocks(n_res, n_dim, norm=norm, activation=activ, pad_type=pad_type)]
 
         for _ in range(n_upsample - 3):
@@ -74,8 +83,8 @@ class GeneratorBA(nn.Module):
             self.noise_blocks += [UpBlock(n_dim, n_dim // 2, norm=norm, activation=activ, pad_type=pad_type)]
             n_dim //= 2
 
-        self.merge_blocks = []
-        self.merge_blocks += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
+        self.merge_blocks = [Conv2dBlock(i_dim + n_dim, dim, 1, 1, 0, norm=norm, activation=activ, pad_type=pad_type)]
+        self.merge_blocks += [ResBlocks(3, dim, norm=norm, activation=activ, pad_type=pad_type, separable=False)]
 
         self.merge_blocks += [
             Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=pad_type)]
@@ -88,7 +97,6 @@ class GeneratorBA(nn.Module):
     def forward(self, images, noise):
         x = self.image_blocks(images)
         y = self.noise_blocks(noise)
-
         x = torch.cat([x, y], dim=1)
         x = self.merge_blocks(x)
 
@@ -96,7 +104,7 @@ class GeneratorBA(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, num_scales=3, depth_discriminator=3, discriminator_mode=DiscriminatorMode.SINGLE,
+    def __init__(self, input_dim, n_filters, num_scales=3, depth_discriminator=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  norm='in'):
         self.pad_type = 'reflect'
         self.activ = 'relu'
@@ -111,18 +119,18 @@ class Discriminator(nn.Module):
         self.channel_discs = nn.ModuleDict()
         # create combined discriminators
         for _ in range(num_scales):
-            self.discs.append(self._make_net(input_dim))
+            self.discs.append(self._make_net(input_dim, n_filters))
         # create channel discriminators
-        if discriminator_mode == DiscriminatorMode.PER_CHANNEL:
+        if discriminator_mode == DiscriminatorMode.CHANNELS:
             for i in range(input_dim):
                 channel_disc = nn.ModuleList()
                 for _ in range(num_scales):
-                    channel_disc.append(self._make_net(1))
+                    channel_disc.append(self._make_net(1, n_filters))
                 self.channel_discs['%d' % i] = channel_disc
         if discriminator_mode == DiscriminatorMode.SINGLE_PER_CHANNEL:
             channel_disc = nn.ModuleList()
             for _ in range(num_scales):
-                channel_disc.append(self._make_net(1))
+                channel_disc.append(self._make_net(1, n_filters))
             for i in range(input_dim):
                 self.channel_discs['%d' % i] = channel_disc
 
@@ -153,6 +161,7 @@ class Discriminator(nn.Module):
 
         for it, (out0, out1) in enumerate(zip(outs0, outs1)):
             loss += torch.mean((out0 - 0) ** 2) + torch.mean((out1 - 1) ** 2)  # LSGAN
+        # normalize for Discriminators
         return loss / len(outs0)
 
     def calc_gen_loss(self, input_fake):
@@ -161,6 +170,7 @@ class Discriminator(nn.Module):
         loss = 0
         for it, (out0) in enumerate(outs0):
             loss += torch.mean((out0 - 1) ** 2)  # LSGAN
+        # normalize for Discriminators
         return loss / len(outs0)
 
     def calc_content_loss(self, input_real, input_fake):
@@ -185,23 +195,25 @@ class Discriminator(nn.Module):
 
             input_real = self.downsample(input_real)
             input_fake = self.downsample(input_fake)
-        return torch.mean(torch.stack(loss, 1), 1)
+        # normalize for Discriminators
+        return torch.sum(torch.stack(loss, 1), 1) / (len(self.channel_discs) + 1) / self.num_scales
 
 
 ########################## Encoder / Decoder ##########################
 
 class NoiseEstimator(nn.Module):
-    def __init__(self, input_dim, n_downsample, dim, noise_dim, norm='in', activ='relu', pad_type='reflect'):
+    def __init__(self, input_dim, n_downsample, dim, noise_dim, n_res, norm='in', activ='relu', pad_type='reflect'):
         super().__init__()
-        assert n_downsample >= 2, 'The minimum noise depth is 2 but found %d' % n_downsample
+        assert n_downsample >= 3, 'The minimum noise depth is 3 but found %d' % n_downsample
         self.model = []
         self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
-        for i in range(2):
+        for i in range(3):
             self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
             dim *= 2
-        for i in range(n_downsample - 2):
+        for i in range(n_downsample - 3):
             self.model += [Conv2dBlock(dim, dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model += [nn.Conv2d(dim, noise_dim, 1, 1, 0), nn.Sigmoid()]
+        self.model += [ResBlocks(n_res, dim, norm, activ, pad_type)]
+        self.model += [nn.Conv2d(dim, noise_dim, 3, 1, 1), nn.Tanh()]
         self.model = nn.Sequential(*self.model)
 
     def forward(self, x):
@@ -214,13 +226,11 @@ class DownBlock(nn.Module):
 
         self.conv1 = Conv2dBlock(input_dim, dim, 3, 2, 1, norm, activation, pad_type)
         self.conv2 = Conv2dBlock(dim, dim, 3, 1, 1, norm, 'none', pad_type)
-        self.shortcut_pool = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
-        self.shortcut_conv = Conv2dBlock(input_dim, dim, 1, 1, 0, norm, 'none', pad_type)
+        self.shortcut_conv = Conv2dBlock(input_dim, dim, 1, 2, 0, norm, 'none', pad_type)
         self.activation = nn.ReLU(inplace=False)
 
     def forward(self, x):
-        shortcut = self.shortcut_pool(x)
-        shortcut = self.shortcut_conv(shortcut)
+        shortcut = self.shortcut_conv(x)
 
         x = self.conv1(x)
         x = self.conv2(x)
@@ -237,12 +247,11 @@ class UpBlock(nn.Module):
         self.conv1 = Conv2dBlock(input_dim, input_dim, 3, 1, 1, norm, activation, pad_type)
         self.conv2 = Conv2dBlock(input_dim, dim, 4, 2, 1, norm, 'none', pad_type, transpose=True)
         self.shortcut_up = nn.UpsamplingNearest2d(scale_factor=2)
-        self.shortcut_conv = Conv2dBlock(input_dim, dim, 1, 1, 0, norm, 'none', pad_type)
+        self.shortcut_conv = Conv2dBlock(input_dim, dim, 2, 2, 0, norm, 'none', pad_type, transpose=True)
         self.activation = nn.ReLU(inplace=False)
 
     def forward(self, x):
-        shortcut = self.shortcut_up(x)
-        shortcut = self.shortcut_conv(shortcut)
+        shortcut = self.shortcut_conv(x)
 
         x = self.conv1(x)
         x = self.conv2(x)
@@ -252,11 +261,11 @@ class UpBlock(nn.Module):
 
 
 class ResBlocks(nn.Module):
-    def __init__(self, num_blocks, dim, norm='in', activation='relu', pad_type='zero'):
+    def __init__(self, num_blocks, dim, norm='in', activation='relu', pad_type='zero', separable=True):
         super(ResBlocks, self).__init__()
         self.model = []
         for i in range(num_blocks):
-            self.model += [ResBlock(dim, norm=norm, activation=activation, pad_type=pad_type)]
+            self.model += [ResBlock(dim, norm=norm, activation=activation, pad_type=pad_type, separable=separable)]
         self.model = nn.Sequential(*self.model)
 
     def forward(self, x):
@@ -264,11 +273,11 @@ class ResBlocks(nn.Module):
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim, norm='in', activation='relu', pad_type='zero'):
+    def __init__(self, dim, norm='in', activation='relu', pad_type='zero', separable=True):
         super().__init__()
 
-        self.conv1 = Conv2dBlock(dim, dim, 3, 1, 1, norm, activation, pad_type)
-        self.conv2 = Conv2dBlock(dim, dim, 3, 1, 1, norm, 'none', pad_type)
+        self.conv1 = Conv2dBlock(dim, dim, 3, 1, 1, norm, activation, pad_type, separable=separable)
+        self.conv2 = Conv2dBlock(dim, dim, 3, 1, 1, norm, 'none', pad_type, separable=separable)
         self.activation = nn.ReLU(inplace=False)
 
     def forward(self, x):
@@ -282,7 +291,7 @@ class ResBlock(nn.Module):
 
 class Conv2dBlock(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size, stride,
-                 padding=0, norm='none', activation='relu', pad_type='zero', transpose=False):
+                 padding=0, norm='none', activation='relu', pad_type='zero', transpose=False, separable=False):
         super().__init__()
         self.use_bias = True
         # initialize padding
@@ -331,8 +340,12 @@ class Conv2dBlock(nn.Module):
             assert 0, "Unsupported activation: {}".format(activation)
 
         # initialize convolution
-        conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias) if not transpose \
-            else nn.ConvTranspose2d(input_dim, output_dim, kernel_size, stride, padding=padding, bias=self.use_bias)
+        if separable:
+            conv = SeparableConv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias, ) if not transpose \
+                else SeparableConvTranspose2d(input_dim, output_dim, kernel_size, stride, padding=padding, bias=self.use_bias)
+        else:
+            conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias) if not transpose \
+                else nn.ConvTranspose2d(input_dim, output_dim, kernel_size, stride, padding=padding, bias=self.use_bias)
         if norm == 'sn':
             self.conv = SpectralNorm(conv)
         else:
@@ -351,6 +364,29 @@ class Conv2dBlock(nn.Module):
             x = self.activation(x)
         return x
 
+class SeparableConv2d(nn.Module):
+    def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,bias=True):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(in_channels,in_channels,kernel_size,stride,padding,dilation,groups=in_channels,bias=bias)
+        self.pointwise = nn.Conv2d(in_channels,out_channels,1,1,0,1,1,bias=bias)
+
+    def forward(self,x):
+        x = self.conv1(x)
+        x = self.pointwise(x)
+        return x
+
+class SeparableConvTranspose2d(nn.Module):
+    def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,bias=True):
+        super().__init__()
+
+        self.conv1 = nn.ConvTranspose2d(in_channels,in_channels,kernel_size,stride,padding,dilation,groups=in_channels,bias=bias)
+        self.pointwise = nn.Conv2d(in_channels,out_channels,1,1,0,1,1,bias=bias)
+
+    def forward(self,x):
+        x = self.conv1(x)
+        x = self.pointwise(x)
+        return x
 
 class AdaptiveInstanceNorm2d(nn.Module):
     def __init__(self, num_features, eps=1e-5, momentum=0.1):

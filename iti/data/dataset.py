@@ -167,12 +167,12 @@ class SDODataset(BaseDataset):
 
 class SOHODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None):
-        data_sets = [EITDataset(os.path.join(path, 'eit_171'), 171),
-                     EITDataset(os.path.join(path, 'eit_195'), 195),
-                     EITDataset(os.path.join(path, 'eit_284'), 284),
-                     EITDataset(os.path.join(path, 'eit_304'), 304),
-                     MDIDataset(os.path.join(path, 'mdi_mag'))
+    def __init__(self, path, patch_shape=None, **kwargs):
+        data_sets = [EITDataset(os.path.join(path, 'eit_171'), 171, **kwargs),
+                     EITDataset(os.path.join(path, 'eit_195'), 195, **kwargs),
+                     EITDataset(os.path.join(path, 'eit_284'), 284, **kwargs),
+                     EITDataset(os.path.join(path, 'eit_304'), 304, **kwargs),
+                     MDIDataset(os.path.join(path, 'mdi_mag'), **kwargs)
                      ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:

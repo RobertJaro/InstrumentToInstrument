@@ -15,10 +15,10 @@ from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstima
 
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=9,
-                 activation='tanh', norm='in', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
+                 activation='tanh', norm='in_rs', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=3, depth_noise=4,
                  lambda_discriminator=3, lambda_reconstruction=1, lambda_reconstruction_id=.1,
-                 lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
+                 lambda_content=1, lambda_content_id=.1, lambda_diversity=1, lambda_noise=1,
                  learning_rate=1e-4):
         super().__init__()
 
@@ -67,14 +67,17 @@ class Trainer(nn.Module):
 
         ############################## INIT NETWORKS ###############################
         self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator,
-                                  depth_generator + upsampling, n_filters, norm=norm)  # generator for domain a-->b
+                                  depth_generator + upsampling, n_filters, res_blocks,
+                                  norm=norm)  # generator for domain a-->b
         self.gen_ba = GeneratorBA(input_dim_b, noise_dim, input_dim_a, upsampling, depth_noise,
-                                  n_filters, norm=norm)  # generator for domain b-->a
-        self.dis_a = Discriminator(input_dim_a, n_discriminators, depth_discriminator, discriminator_mode,
+                                  n_filters, res_blocks, norm=norm)  # generator for domain b-->a
+        self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators, depth_discriminator, discriminator_mode,
                                    norm=norm)  # discriminator for domain a
-        self.dis_b = Discriminator(input_dim_b, n_discriminators, depth_discriminator, discriminator_mode,
+        self.dis_b = Discriminator(input_dim_b, n_filters, n_discriminators, depth_discriminator, discriminator_mode,
                                    norm=norm)  # discriminator for domain b
-        self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim, norm=norm)
+        self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim, res_blocks, norm=norm)
+        self.module_list = nn.ModuleList([self.gen_ab, self.gen_ba, self.dis_a, self.dis_b, self.estimator_noise])
+
         self.downsample = nn.AvgPool2d(2 ** upsampling)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2 ** upsampling)
 
@@ -88,6 +91,12 @@ class Trainer(nn.Module):
         # Training utils
         self.gen_stack = []
         self.frozen_norm = False
+
+        logging.info("Total Parameters Generator: %d/%d" % (sum(p.numel() for p in self.gen_ba.parameters()),
+                                                            sum(p.numel() for p in self.gen_ab.parameters())))
+        logging.info("Total Parameters Discriminator: %d/%d" % (sum(p.numel() for p in self.dis_a.parameters()),
+                                                            sum(p.numel() for p in self.dis_b.parameters())))
+        logging.info("Total Parameters Noise: %d" % (sum(p.numel() for p in self.estimator_noise.parameters())))
 
     def noise_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
@@ -147,8 +156,6 @@ class Trainer(nn.Module):
         # translate 1
         x_ab = self.gen_ab(x_a)
         x_ba = self.gen_ba(x_b, n_gen)
-        # noise 1
-        n_ba = self.estimator_noise(x_ba)
 
         # translate 2
         x_aba = self.gen_ba(x_ab, n_a)
@@ -170,7 +177,6 @@ class Trainer(nn.Module):
         self.loss_gen_a_identity_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_a_identity))
         self.loss_gen_b_identity_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_b_identity))
         # Noise loss
-        self.loss_gen_ba_noise = self.noise_criterion(n_ba, n_gen)
         self.loss_gen_aba_noise = self.noise_criterion(n_aba, n_a)
         self.loss_gen_a_identity_noise = self.noise_criterion(n_a_identity, n_a)
         # Diversity loss
@@ -189,11 +195,53 @@ class Trainer(nn.Module):
                               self.lambda_content * (self.loss_gen_a_content + self.loss_gen_b_content) + \
                               self.lambda_content_id * (
                                       self.loss_gen_a_identity_content + self.loss_gen_b_identity_content) + \
-                              self.lambda_noise * (
-                                      self.loss_gen_ba_noise + self.loss_gen_aba_noise + self.loss_gen_a_identity_noise) + \
+                              self.lambda_noise * (self.loss_gen_aba_noise + self.loss_gen_a_identity_noise) + \
                               self.lambda_diversity * self.loss_gen_diversity
         self.loss_gen_total.backward()
         self.gen_opt.step()
+
+    def validate(self, x_a, x_b):
+        self.eval()
+        with torch.no_grad():
+
+            # noise init
+            n_a = self.estimator_noise(x_a)
+            n_gen = self.generateNoise(x_b)
+
+            # identity
+            x_b_identity = self.gen_ab(self.downsample(x_b))
+            x_a_identity = self.gen_ba(self.upsample(x_a), n_a)
+            n_a_identity = self.estimator_noise(x_a_identity)
+
+            # translate 1
+            x_ab = self.gen_ab(x_a)
+            x_ba = self.gen_ba(x_b, n_gen)
+
+            # translate 2
+            x_aba = self.gen_ba(x_ab, n_a)
+            x_bab = self.gen_ab(x_ba)
+            # noise 2
+            n_aba = self.estimator_noise(x_aba)
+
+            # reconstruction loss
+            self.valid_loss_gen_a_identity = self.recon_criterion(x_a_identity, x_a)
+            self.valid_loss_gen_b_identity = self.recon_criterion(x_b_identity, x_b)
+            self.valid_loss_gen_a_translate = self.recon_criterion(x_aba, x_a)
+            self.valid_loss_gen_b_translate = self.recon_criterion(x_bab, x_b)
+            # GAN loss
+            self.valid_loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
+            self.valid_loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
+            self.valid_loss_dis_a = self.dis_a.calc_gen_loss(x_a) # use only real images fro validation
+            self.valid_loss_dis_b = self.dis_b.calc_gen_loss(x_b)
+            # Content loss
+            self.valid_loss_gen_a_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_aba))
+            self.valid_loss_gen_b_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_bab))
+            self.valid_loss_gen_a_identity_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_a_identity))
+            self.valid_loss_gen_b_identity_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_b_identity))
+            # Noise loss
+            self.valid_loss_gen_aba_noise = self.noise_criterion(n_aba, n_a)
+            self.valid_loss_gen_a_identity_noise = self.noise_criterion(n_a_identity, n_a)
+        self.train()
 
     def fill_stack(self, inputs):
         for x_a, x_b in inputs:

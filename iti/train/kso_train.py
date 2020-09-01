@@ -12,7 +12,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v6"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v7"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -24,7 +24,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1)
+trainer = Trainer(1, 1, lambda_discriminator=6, lambda_content=1, lambda_content_id=.1)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 

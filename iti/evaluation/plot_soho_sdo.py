@@ -14,7 +14,7 @@ from iti.train.trainer import Trainer
 
 sdo_shape = 2048
 soho_shape = 1024
-base_path = "/gss/r.jarolim/prediction/iti/soho_sdo_v10"
+base_path = "/gss/r.jarolim/prediction/iti/soho_sdo_v15"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid")
@@ -22,7 +22,7 @@ soho_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
 loader = DataLoader(soho_dataset, batch_size=1, shuffle=True)
 iter = loader.__iter__()
 
-trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.PER_CHANNEL, lambda_diversity=0, norm='in_rs')
+trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS, norm='in_rs', lambda_diversity=0)
 trainer.cuda()
 iteration = trainer.resume(base_path)
 
