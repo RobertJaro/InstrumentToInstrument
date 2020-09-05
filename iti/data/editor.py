@@ -9,8 +9,9 @@ import pandas
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from astropy.visualization import ImageNormalize, LinearStretch, AsinhStretch, LogStretch
+from astropy.visualization import ImageNormalize, LinearStretch, AsinhStretch
 from dateutil.parser import parse
+from matplotlib.colors import LogNorm
 from scipy import ndimage
 from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
@@ -42,15 +43,15 @@ sdo_norms = {94: ImageNormalize(vmin=0, vmax=445.5, stretch=AsinhStretch(0.005),
              335: ImageNormalize(vmin=0, vmax=915, stretch=AsinhStretch(0.005), clip=True),
              1600: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
              1700: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
-             'mag': ImageNormalize(vmin=-100, vmax=100, stretch=LinearStretch(), clip=True),
+             'mag': ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
              'continuum': ImageNormalize(vmin=0, vmax=70000, stretch=LinearStretch(), clip=True),
              }
 
-soho_norms = {171: ImageNormalize(vmin=0, vmax=3000, stretch=LogStretch(), clip=True),
-              195: ImageNormalize(vmin=0, vmax=3000, stretch=LogStretch(), clip=True),
-              284: ImageNormalize(vmin=0, vmax=500, stretch=LogStretch(), clip=True),
-              304: ImageNormalize(vmin=0, vmax=2000, stretch=LogStretch(), clip=True),
-              6173: ImageNormalize(vmin=-100, vmax=100, stretch=LinearStretch(), clip=True),
+soho_norms = {171: LogNorm(vmin=0.1, vmax=3000, clip=True),
+              195: LogNorm(vmin=0.1, vmax=3000, clip=True),
+              284: LogNorm(vmin=0.1, vmax=500, clip=True),
+              304: LogNorm(vmin=0.1, vmax=2000, clip=True),
+              6173: ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
               }
 
 
@@ -336,6 +337,7 @@ class RemoveOffLimbEditor(Editor):
             s_map.data[r > 1] = self.fill_value
             return s_map
 
+
 class FeaturePatchEditor(Editor):
 
     def __init__(self, patch_shape=(512, 512)):
@@ -354,18 +356,20 @@ class FeaturePatchEditor(Editor):
             pixel_pos = np.argwhere(data == np.nanmin(data))
             pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
             pixel_pos = [pixel_pos[1], pixel_pos[0]]
-            pixel_pos = np.min([pixel_pos[0], data.shape[0] - self.patch_shape[0]]), np.min([pixel_pos[1], data.shape[1] - self.patch_shape[1]])
+            pixel_pos = np.min([pixel_pos[0], data.shape[0] - self.patch_shape[0]]), np.min(
+                [pixel_pos[1], data.shape[1] - self.patch_shape[1]])
             pixel_pos = np.max([pixel_pos[0], self.patch_shape[0]]), np.max([pixel_pos[1], self.patch_shape[1]])
 
             pixel_pos = np.array(pixel_pos) * u.pix
             center = s_map.pixel_to_world(pixel_pos[0], pixel_pos[1])
 
             arcs_frame = s_map.scale[0] * (self.patch_shape[0] * u.pix)
-            s_map = s_map.submap(SkyCoord([center.Tx-arcs_frame, center.Tx+arcs_frame],
-                                          [center.Ty-arcs_frame, center.Ty+arcs_frame],
+            s_map = s_map.submap(SkyCoord([center.Tx - arcs_frame, center.Tx + arcs_frame],
+                                          [center.Ty - arcs_frame, center.Ty + arcs_frame],
                                           frame=s_map.coordinate_frame))
 
             return s_map
+
 
 class RandomPatchEditor(Editor):
     def __init__(self, patch_shape):
@@ -379,6 +383,7 @@ class RandomPatchEditor(Editor):
         patch = data[:, x:x + self.patch_shape[0], y:y + self.patch_shape[1]]
         assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
         return patch
+
 
 class BrightestPixelPatchEditor(Editor):
     def __init__(self, patch_shape, idx=0):
@@ -404,17 +409,19 @@ class BrightestPixelPatchEditor(Editor):
         assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
         return patch
 
+
 class EITCheckEditor(Editor):
 
     def call(self, s_map, **kwargs):
         assert np.all(np.logical_not(np.isnan(s_map.data))), 'Found missing block %s' % s_map.date.datetime.isoformat()
-        assert 'N_MISSING_BLOCKS =    0' in s_map.meta['comment'], 'Found missing block %s: %s' % (s_map.date.datetime.isoformat(), s_map.meta['comment'])
+        assert 'N_MISSING_BLOCKS =    0' in s_map.meta['comment'], 'Found missing block %s: %s' % (
+        s_map.date.datetime.isoformat(), s_map.meta['comment'])
         return s_map
+
 
 class PaddingEditor(Editor):
     def __init__(self, patch_shape):
         self.patch_shape = patch_shape
-
 
     def call(self, data, **kwargs):
         s = data.shape
@@ -422,10 +429,11 @@ class PaddingEditor(Editor):
         x_pad = (p[0] - s[-2]) / 2
         y_pad = (p[1] - s[-1]) / 2
         pad = [(int(np.floor(x_pad)), int(np.ceil(x_pad))),
-                (int(np.floor(y_pad)), int(np.ceil(y_pad)))]
+               (int(np.floor(y_pad)), int(np.ceil(y_pad)))]
         if len(s) == 3:
-            pad.insert(0, (0,0))
+            pad.insert(0, (0, 0))
         return np.pad(data, pad, 'constant', constant_values=np.min(data))
+
 
 class PassEditor(Editor):
 

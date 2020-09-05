@@ -31,7 +31,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, upsampling=2, norm='in_rs')
+trainer = Trainer(1, 1, upsampling=2, norm='in_rs', lambda_diversity=0.1)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -84,7 +84,7 @@ aba_callback.call(0)
 v_callback = VariationPlotBA(hinode_dataset.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-lr_scheduler = LRScheduler(trainer, 30000)
+lr_scheduler = LRScheduler(trainer, 25000, init_iteration=start_it)
 
 callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
 

@@ -402,10 +402,11 @@ class SaveCallback(Callback):
 
 
 class LRScheduler(Callback):
-    def __init__(self, trainer:Trainer, step=100000, gamma=0.5):
+    def __init__(self, trainer:Trainer, step=100000, gamma=0.5, init_iteration=0):
         self.lr_scheduler_gen = StepLR(trainer.gen_opt, step_size=step, gamma=gamma)
         self.lr_scheduler_dis = StepLR(trainer.dis_opt, step_size=step, gamma=gamma)
         super(LRScheduler, self).__init__(1)
+        [self.call(i) for i in range(init_iteration)]
 
     def call(self, iteration, **kwargs):
         self.lr_scheduler_gen.step()

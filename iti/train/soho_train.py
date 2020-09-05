@@ -1,8 +1,5 @@
 import logging
 import os
-import time
-from datetime import datetime
-from random import sample
 
 from sunpy.visualization.colormaps import cm
 
@@ -19,7 +16,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, LRScheduler, ValidationHistoryCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v14"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v15"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -31,7 +28,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS, norm='in_rs')
+trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -82,26 +79,31 @@ bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iterati
 aba_callback = PlotABA(soho_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-full_disc_aba_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024)).sample(1), trainer,
+full_disc_aba_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024)).sample(1),
+                                 trainer,
                                  prediction_dir, log_iteration=log_iteration,
-                                 plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_aba')
+                                 plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
+                                 plot_id='full_disc_aba')
 full_disc_aba_callback.call(0)
 
-full_disc_bab_callback = PlotBAB(SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(2048, 2048)).sample(1), trainer,
-                             prediction_dir, log_iteration=log_iteration,
-                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_bab')
+full_disc_bab_callback = PlotBAB(SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(2048, 2048)).sample(1),
+                                 trainer,
+                                 prediction_dir, log_iteration=log_iteration,
+                                 plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
+                                 plot_id='full_disc_bab')
 full_disc_bab_callback.call(0)
 
 v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-lr_scheduler = LRScheduler(trainer, 30000)
+lr_scheduler = LRScheduler(trainer, 25000, start_it)
 
-callbacks = [history, validation, progress, save, bab_callback, aba_callback, v_callback, full_disc_aba_callback, full_disc_bab_callback]
+callbacks = [history, validation, progress, save, bab_callback, aba_callback, v_callback, full_disc_aba_callback,
+             full_disc_bab_callback, lr_scheduler]
 
 # Init generator stack
-# trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),
-#                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
+trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),
+                     next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
     x_a, x_b = next(soho_iterator), next(sdo_iterator)
