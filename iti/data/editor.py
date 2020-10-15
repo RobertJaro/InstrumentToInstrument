@@ -54,6 +54,12 @@ soho_norms = {171: LogNorm(vmin=0.1, vmax=3000, clip=True),
               6173: ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
               }
 
+secchi_norms = {171: ImageNormalize(vmin=0, vmax=3704, stretch=AsinhStretch(0.005), clip=True),
+             195: ImageNormalize(vmin=0, vmax=2987, stretch=AsinhStretch(0.005), clip=True),
+             284: ImageNormalize(vmin=0, vmax=892, stretch=AsinhStretch(0.005), clip=True),
+             304: ImageNormalize(vmin=0, vmax=9672, stretch=AsinhStretch(0.005), clip=True),
+             }
+
 
 class LoadFITSEditor(Editor):
 

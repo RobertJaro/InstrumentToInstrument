@@ -9,10 +9,10 @@ from torch.utils.data import DataLoader
 
 from iti.data.dataset import KSODataset, StorageDataset, KSOFilmDataset
 from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback, LRScheduler
+    SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/film_v1"
+base_dir = "/gss/r.jarolim/prediction/iti/film_v2"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -55,9 +55,7 @@ aba_callback.call(0)
 v_callback = VariationPlotBA(kso_ccd_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-lr_scheduler = LRScheduler(trainer, 30000)
-
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
+callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
 
 # Init generator stack
 trainer.fill_stack([(next(kso_film_iterator).float().cuda().detach(),

@@ -9,10 +9,10 @@ from torch.utils.data import DataLoader
 
 from iti.data.dataset import KSODataset, StorageDataset
 from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback, LRScheduler
+    SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v6"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v7"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -24,7 +24,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, norm='in')
+trainer = Trainer(1, 1, norm='in', lambda_content=0, lambda_content_id=0)
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -54,7 +54,7 @@ aba_callback.call(0)
 v_callback = VariationPlotBA(q1_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-lr_scheduler = LRScheduler(trainer, 30000)
+lr_scheduler = NormScheduler(trainer, 30000)
 
 callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
 

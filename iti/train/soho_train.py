@@ -13,10 +13,10 @@ from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset, SOHODataset, StorageDataset
 from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback, LRScheduler, ValidationHistoryCallback
+    SaveCallback, NormScheduler, ValidationHistoryCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v15"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v16"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -28,8 +28,9 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0)
+trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0, norm='in', lambda_content_id=0, lambda_content=0)
 trainer.cuda()
+trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
@@ -96,10 +97,8 @@ full_disc_bab_callback.call(0)
 v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-lr_scheduler = LRScheduler(trainer, 25000, start_it)
-
 callbacks = [history, validation, progress, save, bab_callback, aba_callback, v_callback, full_disc_aba_callback,
-             full_disc_bab_callback, lr_scheduler]
+             full_disc_bab_callback]
 
 # Init generator stack
 trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),

@@ -78,17 +78,17 @@ class Trainer(nn.Module):
         self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim, norm=norm)
         self.downsample = nn.AvgPool2d(2 ** upsampling)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2 ** upsampling)
+        self.module_list = nn.ModuleList([self.gen_ab, self.gen_ba, self.dis_a, self.dis_b, self.estimator_noise])
 
         # Setup the optimizers
         dis_params = list(self.dis_a.parameters()) + list(self.dis_b.parameters())
         gen_params = list(self.gen_ab.parameters()) + list(self.gen_ba.parameters()) + list(
             self.estimator_noise.parameters())
-        self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
-        self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
+        self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))#SGD([p for p in dis_params if p.requires_grad], lr=learning_rate, momentum=0.9)
+        self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))#SGD([p for p in gen_params if p.requires_grad], lr=learning_rate, momentum=0.9)
 
         # Training utils
         self.gen_stack = []
-        self.frozen_norm = False
 
         logging.info("Total Parameters Generator: %d/%d" % (sum(p.numel() for p in self.gen_ba.parameters()),
                                                             sum(p.numel() for p in self.gen_ab.parameters())))
@@ -298,9 +298,11 @@ class Trainer(nn.Module):
         self.dis_a.load_state_dict(state_dict['a'])
         self.dis_b.load_state_dict(state_dict['b'])
         # Load optimizers
-        state_dict = torch.load(os.path.join(checkpoint_dir, 'optimizer.pt'), map_location='cpu' if cpu else None)
-        self.dis_opt.load_state_dict(state_dict['dis'])
-        self.gen_opt.load_state_dict(state_dict['gen'])
+        opt_path = os.path.join(checkpoint_dir, 'optimizer.pt')
+        if os.path.exists(opt_path):
+            state_dict = torch.load(opt_path, map_location='cpu' if cpu else None)
+            self.dis_opt.load_state_dict(state_dict['dis'])
+            self.gen_opt.load_state_dict(state_dict['gen'])
         print('Resume from iteration %d' % last_iteration)
         return last_iteration
 
@@ -315,17 +317,10 @@ class Trainer(nn.Module):
         torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
         torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
 
-    def freeze_norm(self):
-        if self.frozen_norm:
-            return  # already frozen
-
-        def freeze(module):
+    def updateMomentum(self, momentum):
+        for module in self.modules():
             if isinstance(module, InstanceNorm2d):
-                module.momentum = 0
-                module.eval()
-
-        self.apply(freeze)
-        self.frozen_norm = True
+                module.momentum = momentum
 
 
 def convertSet(data_set, store_path):

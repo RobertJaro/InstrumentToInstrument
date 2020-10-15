@@ -401,13 +401,16 @@ class SaveCallback(Callback):
         self.trainer.save(self.checkpoint_dir, iteration)
 
 
-class LRScheduler(Callback):
-    def __init__(self, trainer:Trainer, step=100000, gamma=0.5, init_iteration=0):
-        self.lr_scheduler_gen = StepLR(trainer.gen_opt, step_size=step, gamma=gamma)
-        self.lr_scheduler_dis = StepLR(trainer.dis_opt, step_size=step, gamma=gamma)
-        super(LRScheduler, self).__init__(1)
-        [self.call(i) for i in range(init_iteration)]
+class NormScheduler(Callback):
+    def __init__(self, trainer:Trainer, step=10000, gamma=0.5, init_iteration=0):
+        self.trainer = trainer
+        super(NormScheduler, self).__init__(step)
+        self.momentum = 1
+        self.gamma = gamma
+        trainer.updateMomentum(self.momentum)
+        [self.call(i) for i in range(init_iteration // step)]
 
     def call(self, iteration, **kwargs):
-        self.lr_scheduler_gen.step()
-        self.lr_scheduler_dis.step()
+        self.momentum *= self.gamma
+        logging.info('Change momentum: %.03f' % self.momentum)
+        self.trainer.updateMomentum(self.momentum)

@@ -307,6 +307,8 @@ class Conv2dBlock(nn.Module):
             self.norm = nn.InstanceNorm2d(norm_dim)
         elif norm == 'in_rs':
             self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.1)
+        elif norm == 'in_rs_aff':
+            self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.1, affine=True)
         elif norm == 'ln':
             self.norm = LayerNorm(norm_dim)
         elif norm == 'adain':

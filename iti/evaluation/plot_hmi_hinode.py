@@ -16,14 +16,15 @@ from iti.train.trainer import Trainer
 hmi_shape = 4096
 patch_shape = 1024
 n_patches = hmi_shape // patch_shape
-base_path = '/gss/r.jarolim/prediction/iti/hmi_hinode_v5'
+base_path = '/gss/r.jarolim/prediction/iti/hmi_hinode_v6'
+os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 
 hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173")
 hmi_dataset.addEditor(PaddingEditor((hmi_shape, hmi_shape)))
 loader = DataLoader(hmi_dataset, batch_size=1, shuffle=True)
 iter = loader.__iter__()
 
-trainer = Trainer(1, 1, upsampling=2, lambda_diversity=0, norm='in_rs')
+trainer = Trainer(1, 1, upsampling=2, norm='in_rs_aff', lambda_diversity=0)
 trainer.cuda()
 iteration = trainer.resume(base_path)
 

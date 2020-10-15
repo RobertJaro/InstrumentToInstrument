@@ -4,20 +4,18 @@ import logging
 import os
 import random
 from enum import Enum
-from multiprocessing.pool import Pool
 from typing import List
 
 import numpy as np
 from astropy.visualization import ImageNormalize, LinearStretch
-from sklearn.utils import shuffle
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
     MapToDataEditor, PyramidRescaleEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
-    AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, RandomPatchEditor, NanEditor, LoadFITSEditor, \
+    AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
-    PassEditor, BrightestPixelPatchEditor
+    PassEditor, BrightestPixelPatchEditor, secchi_norms
 
 
 class Norm(Enum):
@@ -45,7 +43,7 @@ class BaseDataset(Dataset):
     def sample(self, n_samples):
         it = DataLoader(self, batch_size=1, shuffle=True, num_workers=4).__iter__()
         samples = []
-        while len(samples) <  n_samples:
+        while len(samples) < n_samples:
             try:
                 samples.append(next(it).detach().numpy()[0])
             except Exception as ex:
@@ -94,7 +92,7 @@ class StorageDataset(Dataset):
     def sample(self, n_samples):
         it = DataLoader(self, batch_size=1, shuffle=True, num_workers=4).__iter__()
         samples = []
-        while len(samples) <  n_samples:
+        while len(samples) < n_samples:
             try:
                 samples.append(next(it).detach().numpy()[0])
             except Exception as ex:
@@ -152,12 +150,12 @@ class KSOFilmDataset(BaseDataset):
 
 class SDODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None):
-        data_sets = [AIADataset(os.path.join(path, 'aia_171'), 171),
-                     AIADataset(os.path.join(path, 'aia_193'), 193),
-                     AIADataset(os.path.join(path, 'aia_211'), 211),
-                     AIADataset(os.path.join(path, 'aia_304'), 304),
-                     HMIDataset(os.path.join(path, 'hmi_mag'), 'mag')
+    def __init__(self, path, patch_shape=None, resolution=2048):
+        data_sets = [AIADataset(os.path.join(path, 'aia_171'), 171, resolution=resolution),
+                     AIADataset(os.path.join(path, 'aia_193'), 193, resolution=resolution),
+                     AIADataset(os.path.join(path, 'aia_211'), 211, resolution=resolution),
+                     AIADataset(os.path.join(path, 'aia_304'), 304, resolution=resolution),
+                     HMIDataset(os.path.join(path, 'hmi_mag'), 'mag', resolution=resolution)
                      ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
@@ -174,6 +172,35 @@ class SOHODataset(BaseDataset):
                      EITDataset(os.path.join(path, 'eit_304'), 304, **kwargs),
                      MDIDataset(os.path.join(path, 'mdi_mag'), **kwargs)
                      ]
+        editors = [StackEditor(data_sets)]
+        if patch_shape is not None:
+            editors.append(BrightestPixelPatchEditor(patch_shape))
+        super().__init__(range(len(data_sets[0])), editors)
+
+
+class STEREODataset(BaseDataset):
+
+    def __init__(self, path, patch_shape=None, **kwargs):
+        data_sets = [SECCHIDataset(os.path.join(path, 'secchi_171'), 171, **kwargs),
+                     SECCHIDataset(os.path.join(path, 'secchi_195'), 195, **kwargs),
+                     SECCHIDataset(os.path.join(path, 'secchi_284'), 284, **kwargs),
+                     SECCHIDataset(os.path.join(path, 'secchi_304'), 304, **kwargs),
+                     ]
+        editors = [StackEditor(data_sets)]
+        if patch_shape is not None:
+            editors.append(BrightestPixelPatchEditor(patch_shape))
+        super().__init__(range(len(data_sets[0])), editors)
+
+
+class STEREOMagnetogramDataset(BaseDataset):
+
+    def __init__(self, path, patch_shape=None, **kwargs):
+        ds_171 = SECCHIDataset(os.path.join(path, 'secchi_171'), 171, **kwargs)
+        ds_195 = SECCHIDataset(os.path.join(path, 'secchi_195'), 195, **kwargs)
+        ds_284 = SECCHIDataset(os.path.join(path, 'secchi_284'), 284, **kwargs)
+        ds_304 = SECCHIDataset(os.path.join(path, 'secchi_304'), 304, **kwargs)
+        ds_zeros = ZerosDataset(len(ds_171), **kwargs)
+        data_sets = [ds_171, ds_195, ds_284, ds_304, ds_zeros, ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
             editors.append(BrightestPixelPatchEditor(patch_shape))
@@ -276,3 +303,33 @@ class HinodeDataset(BaseDataset):
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
         super().__init__(map_paths, editors=editors)
+
+
+class SECCHIDataset(BaseDataset):
+
+    def __init__(self, path, wavelength, resolution=1024, ext='*.fits'):
+        norm = secchi_norms[wavelength]
+        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(1024),
+                   MapToDataEditor(),
+                   PyramidRescaleEditor(1024 / resolution),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(map_paths, editors=editors)
+
+
+class ZerosDataset(Dataset):
+
+    def __init__(self, length, resolution=1024, **kwargs):
+        self.shape = (1, resolution, resolution)
+        self.length = length
+
+        super().__init__()
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        return np.zeros(self.shape)
