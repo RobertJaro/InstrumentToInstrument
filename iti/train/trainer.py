@@ -14,8 +14,8 @@ from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstima
 
 
 class Trainer(nn.Module):
-    def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=9,
-                 activation='tanh', norm='in_rs', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
+    def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=6,
+                 activation='tanh', norm='in_rs_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=4, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
@@ -66,16 +66,16 @@ class Trainer(nn.Module):
         self.lambda_noise = lambda_noise
 
         ############################## INIT NETWORKS ###############################
-        self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator,
-                                  depth_generator + upsampling, n_filters, res_blocks,
-                                  norm=norm)  # generator for domain a-->b
-        self.gen_ba = GeneratorBA(input_dim_b, noise_dim, input_dim_a, upsampling, depth_noise,
-                                  n_filters, res_blocks, norm=norm)  # generator for domain b-->a
+        self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator, upsampling, n_filters,
+                                  norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain a-->b
+        self.gen_ba = GeneratorBA(input_dim_b, input_dim_a, noise_dim, depth_generator, depth_noise, upsampling,
+                                  n_filters, norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain b-->a
         self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators, depth_discriminator, discriminator_mode,
                                    norm=norm)  # discriminator for domain a
         self.dis_b = Discriminator(input_dim_b, n_filters, n_discriminators, depth_discriminator, discriminator_mode,
                                    norm=norm)  # discriminator for domain b
-        self.estimator_noise = NoiseEstimator(input_dim_a, depth_noise, n_filters, noise_dim, norm=norm)
+        self.estimator_noise = NoiseEstimator(input_dim_a, n_filters, noise_dim,
+                                              depth_noise, norm=norm, activation='relu', pad_type='reflect')
         self.downsample = nn.AvgPool2d(2 ** upsampling)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2 ** upsampling)
         self.module_list = nn.ModuleList([self.gen_ab, self.gen_ba, self.dis_a, self.dis_b, self.estimator_noise])
@@ -84,17 +84,20 @@ class Trainer(nn.Module):
         dis_params = list(self.dis_a.parameters()) + list(self.dis_b.parameters())
         gen_params = list(self.gen_ab.parameters()) + list(self.gen_ba.parameters()) + list(
             self.estimator_noise.parameters())
-        self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))#SGD([p for p in dis_params if p.requires_grad], lr=learning_rate, momentum=0.9)
-        self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))#SGD([p for p in gen_params if p.requires_grad], lr=learning_rate, momentum=0.9)
+        self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
+        self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
 
         # Training utils
         self.gen_stack = []
 
-        logging.info("Total Parameters Generator: %d/%d" % (sum(p.numel() for p in self.gen_ba.parameters()),
-                                                            sum(p.numel() for p in self.gen_ab.parameters())))
-        logging.info("Total Parameters Discriminator: %d/%d" % (sum(p.numel() for p in self.dis_a.parameters()),
-                                                            sum(p.numel() for p in self.dis_b.parameters())))
-        logging.info("Total Parameters Noise: %d" % (sum(p.numel() for p in self.estimator_noise.parameters())))
+        logging.info("Total Parameters Generator (BA/AB): %.02f/%.02f M" %
+                     (sum(p.numel() for p in self.gen_ba.parameters()) / 1e6,
+                      sum(p.numel() for p in self.gen_ab.parameters()) / 1e6))
+        logging.info("Total Parameters Discriminator (A/B): %.02f/%.02f M" %
+                     (sum(p.numel() for p in self.dis_a.parameters()) / 1e6,
+                      sum(p.numel() for p in self.dis_b.parameters()) / 1e6))
+        logging.info("Total Parameters Noise Estimator: %.02f M" %
+                     (sum(p.numel() for p in self.estimator_noise.parameters()) / 1e6))
 
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
@@ -276,46 +279,40 @@ class Trainer(nn.Module):
                                     x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
         return n_gen
 
-    def resume(self, checkpoint_dir, cpu=False, iteration=None):
+    def resume(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, 'checkpoint.pt')
+        if not os.path.exists(path):
+            return 0
+        state_dict = torch.load(path)
         # Load generators
-        model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'gen_*.pt')))
-        model_names = model_names if iteration is None else [m for m in model_names if str(iteration) in m]
-        if len(model_names) == 0:
-            return 0
-        last_model_name = model_names[-1]
-        state_dict = torch.load(last_model_name, map_location='cpu' if cpu else None)
-        self.gen_ab.load_state_dict(state_dict['a'])
-        self.gen_ba.load_state_dict(state_dict['b'])
-        self.estimator_noise.load_state_dict(state_dict['e'])
-        last_iteration = int(last_model_name[-11:-3])
+        self.gen_ab.load_state_dict(state_dict['gen_ab'])
+        self.gen_ba.load_state_dict(state_dict['gen_ba'])
+        self.estimator_noise.load_state_dict(state_dict['noise_est'])
         # Load discriminators
-        model_names = sorted(glob.glob(os.path.join(checkpoint_dir, 'dis_*.pt')))
-        model_names = model_names if iteration is None else [m for m in model_names if str(iteration) in m]
-        if len(model_names) == 0:
-            return 0
-        last_model_name = model_names[-1]
-        state_dict = torch.load(last_model_name, map_location='cpu' if cpu else None)
-        self.dis_a.load_state_dict(state_dict['a'])
-        self.dis_b.load_state_dict(state_dict['b'])
+        self.dis_a.load_state_dict(state_dict['disc_a'])
+        self.dis_b.load_state_dict(state_dict['disc_b'])
         # Load optimizers
-        opt_path = os.path.join(checkpoint_dir, 'optimizer.pt')
-        if os.path.exists(opt_path):
-            state_dict = torch.load(opt_path, map_location='cpu' if cpu else None)
-            self.dis_opt.load_state_dict(state_dict['dis'])
-            self.gen_opt.load_state_dict(state_dict['gen'])
+        self.gen_opt.load_state_dict(state_dict['opt_gen'])
+        self.dis_opt.load_state_dict(state_dict['opt_dis'])
+        last_iteration = state_dict['iteration']
         print('Resume from iteration %d' % last_iteration)
         return last_iteration
 
     def save(self, checkpoint_dir, iterations):
         # Save generators, discriminators, and optimizers
-        gen_name = os.path.join(checkpoint_dir, 'gen_%08d.pt' % (iterations + 1))
-        dis_name = os.path.join(checkpoint_dir, 'dis_%08d.pt' % (iterations + 1))
-        opt_name = os.path.join(checkpoint_dir, 'optimizer.pt')
-        torch.save({'a': self.gen_ab.state_dict(),
-                    'b': self.gen_ba.state_dict(),
-                    'e': self.estimator_noise.state_dict()}, gen_name)
-        torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
-        torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
+        state_path = os.path.join(checkpoint_dir, 'checkpoint.pt')
+        checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint_%05d.pt' % (iterations + 1))
+        state = {'iteration': iterations,
+                 'gen_ab': self.gen_ab.state_dict(),
+                 'gen_ba': self.gen_ba.state_dict(),
+                 'noise_est': self.estimator_noise.state_dict(),
+                 'disc_a': self.dis_a.state_dict(),
+                 'disc_b': self.dis_b.state_dict(),
+                 'opt_gen': self.gen_opt.state_dict(),
+                 'opt_dis': self.dis_opt.state_dict()}
+        torch.save(state, state_path)
+        if (iterations + 1) % 50000:
+            torch.save(state, checkpoint_path)
 
     def updateMomentum(self, momentum):
         for module in self.modules():

@@ -11,21 +11,26 @@ if __name__ == '__main__':
     #                                 '/gss/r.jarolim/data/converted/hinode_train',
     #                                 ext_editors=[])
     # hinode_dataset.convert(8)
-    # sdo_dataset = SDODataset("/gss/r.jarolim/data/sdo/train", resolution=4096, patch_shape=(512, 512))
-    # sdo_dataset = StorageDataset(sdo_dataset,
-    #                              '/gss/r.jarolim/data/converted/sdo_fullres_train',
-    #                              ext_editors=[])
-    # sdo_dataset.convert(8)
-
-    sdo_dataset = SDODataset("/gss/r.jarolim/data/sdo/valid", resolution=4096, patch_shape=(512, 512))
+    sdo_dataset = SDODataset("/gss/r.jarolim/data/ch_detection", resolution=2048, patch_shape=(1024, 1024))
     sdo_dataset = StorageDataset(sdo_dataset,
-                                 '/gss/r.jarolim/data/converted/sdo_fullres_valid',
+                                 '/gss/r.jarolim/data/converted/sdo_train',
                                  ext_editors=[])
-    sdo_dataset.convert(8)
+    sdo_dataset.convert(12)
 
-    # soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", patch_shape=(256, 256))
-    # storage_ds = StorageDataset(soho_dataset, '/gss/r.jarolim/data/converted/soho_train', ext_editors=[])
-    # storage_ds.convert(8)
+    sdo_dataset = SDODataset("/gss/r.jarolim/data/sdo/valid", resolution=2048, patch_shape=(1024, 1024))
+    sdo_dataset = StorageDataset(sdo_dataset,
+                                 '/gss/r.jarolim/data/converted/sdo_valid',
+                                 ext_editors=[])
+    sdo_dataset.convert(12)
+
+    soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", patch_shape=(1024, 1024))
+    storage_ds = StorageDataset(soho_dataset, '/gss/r.jarolim/data/converted/soho_train', ext_editors=[])
+    storage_ds.convert(12)
+
+    soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024))
+    storage_ds = StorageDataset(soho_dataset, '/gss/r.jarolim/data/converted/soho_valid', ext_editors=[])
+    storage_ds.convert(12)
+
     # stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", patch_shape=(256, 256))
     # stereo_dataset = StorageDataset(stereo_dataset,
     #                              '/gss/r.jarolim/data/converted/stereo_train',

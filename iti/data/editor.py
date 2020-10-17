@@ -6,6 +6,8 @@ from random import randint
 
 import numpy as np
 import pandas
+from aiapy.calibrate import correct_degradation
+from aiapy.calibrate.util import get_correction_table
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
@@ -17,6 +19,7 @@ from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
 from sunpy.map import Map, all_coordinates_from_map, header_helper
 
+correction_table = get_correction_table()
 
 class Editor(ABC):
 
@@ -215,25 +218,13 @@ class KSOFilmPrepEditor(Editor):
 class AIAPrepEditor(Editor):
     def __init__(self):
         super().__init__()
-        self.response = pandas.read_csv(os.path.join('/gss/r.jarolim/data', 'aia_response.csv'),
-                                        delim_whitespace=True,
-                                        parse_dates=[['year', 'month', 'day']])
 
     def call(self, s_map, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # ignore warnings
-            data = self.getCorrectedMapData(s_map)
-            return Map(data, s_map.meta)
-
-    def getCorrectedMapData(self, s_map):
-        data = s_map.data
-        key = 'aia%d' % s_map.wavelength.value
-        correction = self.response[key][
-            np.argmin(np.abs(self.response.year_month_day - s_map.date.datetime))] if key in self.response else 1
-        correction = correction if correction > 0.03 else 0.03
-        data = data / correction / s_map.meta["exptime"]
-        data = data.astype(np.float32)
-        return data
+        warnings.simplefilter("ignore")  # ignore warnings
+        s_map = correct_degradation(s_map, correction_table=correction_table)
+        data = np.nan_to_num(s_map.data)
+        data = data / s_map.meta["exptime"]
+        return Map(data.astype(np.float32), s_map.meta)
 
 
 class NormalizeExposureEditor(Editor):
@@ -241,12 +232,10 @@ class NormalizeExposureEditor(Editor):
         super().__init__()
 
     def call(self, s_map, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # ignore warnings
-            data = s_map.data
-            data = data / s_map.exposure_time.to(u.s).value
-            data = data.astype(np.float32)
-            return Map(data, s_map.meta)
+        warnings.simplefilter("ignore")  # ignore warnings
+        data = s_map.data
+        data = data / s_map.exposure_time.to(u.s).value
+        return Map(data.astype(np.float32), s_map.meta)
 
 
 class NormalizeRadiusEditor(Editor):
@@ -257,19 +246,24 @@ class NormalizeRadiusEditor(Editor):
         super(NormalizeRadiusEditor, self).__init__(**kwargs)
 
     def call(self, s_map, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # ignore warnings
-            r_obs_pix = s_map.rsun_obs / s_map.scale[0]  # normalize solar radius
-            r_obs_pix = (1 + self.padding_factor) * r_obs_pix
-            scale_factor = self.resolution / (2 * r_obs_pix.value)
-            s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=s_map.min(), order=3)
-            if self.crop:
-                arcs_frame = (self.resolution / 2) * s_map.scale[0].value
-                s_map = s_map.submap(SkyCoord([-arcs_frame, arcs_frame] * u.arcsec,
-                                              [-arcs_frame, arcs_frame] * u.arcsec,
-                                              frame=s_map.coordinate_frame))
-            s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
-            return s_map
+        warnings.simplefilter("ignore")  # ignore warnings
+        r_obs_pix = s_map.rsun_obs / s_map.scale[0]  # normalize solar radius
+        r_obs_pix = (1 + self.padding_factor) * r_obs_pix
+        scale_factor = self.resolution / (2 * r_obs_pix.value)
+        s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
+        s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=3)
+        if self.crop:
+            arcs_frame = (self.resolution / 2) * s_map.scale[0].value
+            s_map = s_map.submap(SkyCoord([-arcs_frame, arcs_frame] * u.arcsec,
+                                          [-arcs_frame, arcs_frame] * u.arcsec,
+                                          frame=s_map.coordinate_frame))
+            pad_x = s_map.data.shape[0] - self.resolution
+            pad_y = s_map.data.shape[1] - self.resolution
+            s_map = s_map.submap([pad_x // 2, pad_y // 2] * u.pix,
+                                 [pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
+
+        s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
+        return s_map
 
 
 class ScaleEditor(Editor):
@@ -336,12 +330,11 @@ class RemoveOffLimbEditor(Editor):
         self.fill_value = fill_value
 
     def call(self, s_map, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # ignore warnings
-            hpc_coords = all_coordinates_from_map(s_map)
-            r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
-            s_map.data[r > 1] = self.fill_value
-            return s_map
+        warnings.simplefilter("ignore")  # ignore warnings
+        hpc_coords = all_coordinates_from_map(s_map)
+        r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
+        s_map.data[r > 1] = self.fill_value
+        return s_map
 
 
 class FeaturePatchEditor(Editor):

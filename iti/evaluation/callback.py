@@ -292,8 +292,8 @@ class ValidationHistoryCallback(Callback):
                 'loss_dis_b': [],
                 'loss_gen_diversity': []
                 }
-        dl_A, dl_B = DataLoader(self.data_set_A, batch_size=4, shuffle=False, num_workers=4),\
-                     DataLoader(self.data_set_B, batch_size=4, shuffle=False, num_workers=4)
+        dl_A, dl_B = DataLoader(self.data_set_A, batch_size=2, shuffle=False, num_workers=4),\
+                     DataLoader(self.data_set_B, batch_size=2, shuffle=False, num_workers=4)
         for x_a, x_b in tqdm(zip(dl_A, dl_B)):
             x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
             self.trainer.validate(x_a, x_b)
@@ -375,18 +375,52 @@ class ValidationHistoryCallback(Callback):
         plt.close()
 
 class ProgressCallback(Callback):
-    def __init__(self, trainer: Trainer, log_iteration=1):
+    def __init__(self, trainer: Trainer, log_iteration=1, running_mean=500):
         self.trainer = trainer
         super().__init__(log_iteration)
 
+        self.loss_dis_a             = [np.nan] * running_mean
+        self.loss_dis_b             = [np.nan] * running_mean
+        self.loss_gen_adv_a         = [np.nan] * running_mean
+        self.loss_gen_adv_b         = [np.nan] * running_mean
+        self.loss_gen_a_translate   = [np.nan] * running_mean
+        self.loss_gen_b_translate   = [np.nan] * running_mean
+        self.loss_gen_a_identity    = [np.nan] * running_mean
+        self.loss_gen_b_identity    = [np.nan] * running_mean
+        self.loss_gen_a_content     = [np.nan] * running_mean
+        self.loss_gen_b_content     = [np.nan] * running_mean
+
+
     def call(self, iteration, **kwargs):
+        self.loss_dis_a.append(self.trainer.loss_dis_a.detach().cpu().numpy())
+        self.loss_dis_b.append(self.trainer.loss_dis_b.detach().cpu().numpy())
+        self.loss_gen_adv_a.append(self.trainer.loss_gen_adv_a.detach().cpu().numpy())
+        self.loss_gen_adv_b.append(self.trainer.loss_gen_adv_b.detach().cpu().numpy())
+        self.loss_gen_a_translate.append(self.trainer.loss_gen_a_translate.detach().cpu().numpy())
+        self.loss_gen_b_translate.append(self.trainer.loss_gen_b_translate.detach().cpu().numpy())
+        self.loss_gen_a_identity.append(self.trainer.loss_gen_a_identity.detach().cpu().numpy())
+        self.loss_gen_b_identity.append(self.trainer.loss_gen_b_identity.detach().cpu().numpy())
+        self.loss_gen_a_content.append(self.trainer.loss_gen_a_content.detach().cpu().numpy())
+        self.loss_gen_b_content.append(self.trainer.loss_gen_b_content.detach().cpu().numpy())
+
+        self.loss_dis_a.pop(0)
+        self.loss_dis_b.pop(0)
+        self.loss_gen_adv_a.pop(0)
+        self.loss_gen_adv_b.pop(0)
+        self.loss_gen_a_translate.pop(0)
+        self.loss_gen_b_translate.pop(0)
+        self.loss_gen_a_identity.pop(0)
+        self.loss_gen_b_identity.pop(0)
+        self.loss_gen_a_content.pop(0)
+        self.loss_gen_b_content.pop(0)
+
         status = '[Iteration %08d] [D diff: %.03f/%.03f] [G loss: adv: %.03f/%.03f, recon: %.03f/%.03f, id: %.03f/%.03f, content: %.03f/%.03f]' % (
             iteration + 1,
-            self.trainer.loss_dis_a, self.trainer.loss_dis_b,
-            self.trainer.loss_gen_adv_a, self.trainer.loss_gen_adv_b,
-            self.trainer.loss_gen_a_translate, self.trainer.loss_gen_b_translate,
-            self.trainer.loss_gen_a_identity, self.trainer.loss_gen_b_identity,
-            self.trainer.loss_gen_a_content, self.trainer.loss_gen_b_content,
+            np.nanmean(self.loss_dis_a), np.nanmean(self.loss_dis_b),
+            np.nanmean(self.loss_gen_adv_a), np.nanmean(self.loss_gen_adv_b),
+            np.nanmean(self.loss_gen_a_translate), np.nanmean(self.loss_gen_b_translate),
+            np.nanmean(self.loss_gen_a_identity), np.nanmean(self.loss_gen_b_identity),
+            np.nanmean(self.loss_gen_a_content), np.nanmean(self.loss_gen_b_content),
         )
         logging.info('%s' % status)
 

@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
-    MapToDataEditor, PyramidRescaleEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
+    MapToDataEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, secchi_norms
@@ -123,9 +123,8 @@ class KSODataset(BaseDataset):
 
         editors = [LoadMapEditor(),
                    KSOPrepEditor(),
-                   NormalizeRadiusEditor(1024),
+                   NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
-                   PyramidRescaleEditor(1024 / resolution),
                    ImageNormalizeEditor(),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -140,9 +139,8 @@ class KSOFilmDataset(BaseDataset):
 
         editors = [LoadFITSEditor(),
                    KSOFilmPrepEditor(),
-                   NormalizeRadiusEditor(1024),
+                   NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
-                   PyramidRescaleEditor(1024 / resolution),
                    ImageNormalizeEditor(vmin=0, vmax=255),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -150,12 +148,12 @@ class KSOFilmDataset(BaseDataset):
 
 class SDODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, resolution=2048):
-        data_sets = [AIADataset(os.path.join(path, 'aia_171'), 171, resolution=resolution),
-                     AIADataset(os.path.join(path, 'aia_193'), 193, resolution=resolution),
-                     AIADataset(os.path.join(path, 'aia_211'), 211, resolution=resolution),
-                     AIADataset(os.path.join(path, 'aia_304'), 304, resolution=resolution),
-                     HMIDataset(os.path.join(path, 'hmi_mag'), 'mag', resolution=resolution)
+    def __init__(self, path, patch_shape=None, **kwargs):
+        data_sets = [AIADataset(os.path.join(path, '171'), 171, **kwargs),
+                     AIADataset(os.path.join(path, '193'), 193, **kwargs),
+                     AIADataset(os.path.join(path, '211'), 211, **kwargs),
+                     AIADataset(os.path.join(path, '304'), 304, **kwargs),
+                     HMIDataset(os.path.join(path, '6173'), 'mag', **kwargs)
                      ]
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
@@ -215,9 +213,8 @@ class EITDataset(BaseDataset):
 
         editors = [LoadMapEditor(),
                    EITCheckEditor(),
-                   NormalizeRadiusEditor(1024),
+                   NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
-                   PyramidRescaleEditor(1024 / resolution),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -230,11 +227,10 @@ class MDIDataset(BaseDataset):
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(1024),
+                   NormalizeRadiusEditor(resolution),
                    RemoveOffLimbEditor(),
                    MapToDataEditor(),
                    NanEditor(),
-                   PyramidRescaleEditor(1024 / resolution),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -247,10 +243,9 @@ class AIADataset(BaseDataset):
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(4096),
+                   NormalizeRadiusEditor(resolution),
                    AIAPrepEditor(),
                    MapToDataEditor(),
-                   PyramidRescaleEditor(4096 / resolution),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -263,11 +258,10 @@ class HMIDataset(BaseDataset):
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(4096),
+                   NormalizeRadiusEditor(resolution),
                    RemoveOffLimbEditor(),
                    MapToDataEditor(),
                    NanEditor(),
-                   PyramidRescaleEditor(4096 / resolution),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -314,7 +308,6 @@ class SECCHIDataset(BaseDataset):
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(1024),
                    MapToDataEditor(),
-                   PyramidRescaleEditor(1024 / resolution),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)

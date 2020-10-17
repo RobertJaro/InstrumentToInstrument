@@ -12,7 +12,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v7"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v9"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -24,7 +24,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, norm='in', lambda_content=0, lambda_content_id=0)
+trainer = Trainer(1, 1, norm='in_aff')
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -49,7 +49,6 @@ bab_callback = PlotBAB(q1_dataset.sample(8), trainer, prediction_dir, log_iterat
 
 aba_callback = PlotABA(q2_dataset.sample(8), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300)
-aba_callback.call(0)
 
 v_callback = VariationPlotBA(q1_dataset.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
@@ -59,14 +58,16 @@ lr_scheduler = NormScheduler(trainer, 30000)
 callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
 
 # Init generator stack
-trainer.fill_stack([(next(q2_iterator).float().cuda().detach(),
-                     next(q1_iterator).float().cuda().detach()) for _ in range(50)])
+# trainer.fill_stack([(next(q2_iterator).float().cuda().detach(),
+#                      next(q1_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
     x_a, x_b = next(q2_iterator), next(q1_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    #
     trainer.discriminator_update(x_a, x_b)
+
+    x_a, x_b = next(q2_iterator), next(q1_iterator)
+    x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     trainer.generator_update(x_a, x_b)
     torch.cuda.synchronize()
     #
