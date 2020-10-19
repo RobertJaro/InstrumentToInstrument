@@ -16,7 +16,7 @@ from iti.train.trainer import Trainer
 hmi_shape = 4096
 patch_shape = 1024
 n_patches = hmi_shape // patch_shape
-base_path = '/gss/r.jarolim/prediction/iti/hmi_hinode_v6'
+base_path = '/gss/r.jarolim/prediction/iti/hmi_hinode_v9'
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 
 hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173")

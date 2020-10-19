@@ -1,11 +1,13 @@
 import os
+import random
 import shutil
 import warnings
 from abc import ABC, abstractmethod
+from pathlib import Path
 from random import randint
 
+import astropy.io.ascii
 import numpy as np
-import pandas
 from aiapy.calibrate import correct_degradation
 from aiapy.calibrate.util import get_correction_table
 from astropy import units as u
@@ -13,13 +15,12 @@ from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.visualization import ImageNormalize, LinearStretch, AsinhStretch
 from dateutil.parser import parse
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, Normalize
 from scipy import ndimage
 from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
 from sunpy.map import Map, all_coordinates_from_map, header_helper
-
-correction_table = get_correction_table()
+from matplotlib import pyplot as plt
 
 class Editor(ABC):
 
@@ -50,18 +51,18 @@ sdo_norms = {94: ImageNormalize(vmin=0, vmax=445.5, stretch=AsinhStretch(0.005),
              'continuum': ImageNormalize(vmin=0, vmax=70000, stretch=LinearStretch(), clip=True),
              }
 
-soho_norms = {171: LogNorm(vmin=0.1, vmax=3000, clip=True),
-              195: LogNorm(vmin=0.1, vmax=3000, clip=True),
-              284: LogNorm(vmin=0.1, vmax=500, clip=True),
-              304: LogNorm(vmin=0.1, vmax=2000, clip=True),
+soho_norms = {171: ImageNormalize(vmin=0, vmax=6457.5, stretch=AsinhStretch(0.005), clip=True),
+              195: ImageNormalize(vmin=0, vmax=7757.31, stretch=AsinhStretch(0.005), clip=True),
+              284: ImageNormalize(vmin=0, vmax=3000, stretch=AsinhStretch(0.005), clip=True),
+              304: ImageNormalize(vmin=0, vmax=3756, stretch=AsinhStretch(0.005), clip=True),
               6173: ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
               }
 
-secchi_norms = {171: ImageNormalize(vmin=0, vmax=3704, stretch=AsinhStretch(0.005), clip=True),
-             195: ImageNormalize(vmin=0, vmax=2987, stretch=AsinhStretch(0.005), clip=True),
-             284: ImageNormalize(vmin=0, vmax=892, stretch=AsinhStretch(0.005), clip=True),
-             304: ImageNormalize(vmin=0, vmax=9672, stretch=AsinhStretch(0.005), clip=True),
-             }
+secchi_norms = {171: ImageNormalize(vmin=0, vmax=5500, stretch=AsinhStretch(0.005), clip=True),
+                195: ImageNormalize(vmin=0, vmax=3000, stretch=AsinhStretch(0.005), clip=True),
+                284: ImageNormalize(vmin=0, vmax=900, stretch=AsinhStretch(0.005), clip=True),
+                304: ImageNormalize(vmin=0, vmax=10000, stretch=AsinhStretch(0.005), clip=True),
+                }
 
 
 class LoadFITSEditor(Editor):
@@ -106,23 +107,18 @@ class MapToDataEditor(Editor):
 
 class ContrastNormalizeEditor(Editor):
 
-    def __init__(self, use_median=False, threshold=False):
+    def __init__(self, use_median=False):
         self.use_median = use_median
-        self.threshold = threshold
 
     def call(self, data, **kwargs):
-        shift = np.median(data, (0, 1), keepdims=True) if self.use_median else np.mean(data, (0, 1), keepdims=True)
-        data = (data - shift) / (np.std(data, (0, 1), keepdims=True) + 10e-8)
-        if self.threshold:
-            data[data > self.threshold] = self.threshold
-            data[data < -self.threshold] = -self.threshold
-            data /= self.threshold
+        shift = np.nanmedian(data) if self.use_median else np.nanmean(data)
+        data = (data - shift) / (np.nanstd(data) + 10e-8)
         return data
 
 
 class ImageNormalizeEditor(Editor):
 
-    def __init__(self, vmin=0, vmax=1000, stretch=LinearStretch()):
+    def __init__(self, vmin=None, vmax=None, stretch=LinearStretch()):
         self.norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=stretch, clip=True)
 
     def call(self, data, **kwargs):
@@ -160,8 +156,11 @@ class ExpandDimsEditor(Editor):
 
 
 class NanEditor(Editor):
+    def __init__(self, nan=0):
+        self.nan = nan
+
     def call(self, data, **kwargs):
-        data = np.nan_to_num(data)
+        data = np.nan_to_num(data, nan=self.nan)
         return data
 
 
@@ -221,7 +220,7 @@ class AIAPrepEditor(Editor):
 
     def call(self, s_map, **kwargs):
         warnings.simplefilter("ignore")  # ignore warnings
-        s_map = correct_degradation(s_map, correction_table=correction_table)
+        s_map = correct_degradation(s_map, correction_table=get_local_correction_table())
         data = np.nan_to_num(s_map.data)
         data = data / s_map.meta["exptime"]
         return Map(data.astype(np.float32), s_map.meta)
@@ -343,31 +342,34 @@ class FeaturePatchEditor(Editor):
         self.patch_shape = patch_shape
 
     def call(self, s_map, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # ignore warnings
-            hpc_coords = all_coordinates_from_map(s_map)
-            r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
+        warnings.simplefilter("ignore")  # ignore warnings
+        hpc_coords = all_coordinates_from_map(s_map)
+        r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
 
-            data = s_map.data
-            data = np.nan_to_num(data)
-            data = ndimage.gaussian_filter(data, sigma=5)
+        data = np.copy(s_map.data)
+        # randomly select limb
+        if random.random() < 0.2:
             data[r > 0.9] = np.nan
-            pixel_pos = np.argwhere(data == np.nanmin(data))
-            pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
-            pixel_pos = [pixel_pos[1], pixel_pos[0]]
-            pixel_pos = np.min([pixel_pos[0], data.shape[0] - self.patch_shape[0]]), np.min(
-                [pixel_pos[1], data.shape[1] - self.patch_shape[1]])
-            pixel_pos = np.max([pixel_pos[0], self.patch_shape[0]]), np.max([pixel_pos[1], self.patch_shape[1]])
+            data[(r > 0.9) & (r < 1.)] = -1
+        else:
+            data[r > 0.9] = np.nan
 
-            pixel_pos = np.array(pixel_pos) * u.pix
-            center = s_map.pixel_to_world(pixel_pos[0], pixel_pos[1])
+        pixel_pos = np.argwhere(data == np.nanmin(data))
+        pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
+        pixel_pos = np.min([pixel_pos[0], data.shape[0] - self.patch_shape[0] // 2]), \
+                    np.min([pixel_pos[1], data.shape[1] - self.patch_shape[1] // 2])
+        pixel_pos = np.max([pixel_pos[0], self.patch_shape[0] // 2]), \
+                    np.max([pixel_pos[1], self.patch_shape[1] // 2])
 
-            arcs_frame = s_map.scale[0] * (self.patch_shape[0] * u.pix)
-            s_map = s_map.submap(SkyCoord([center.Tx - arcs_frame, center.Tx + arcs_frame],
-                                          [center.Ty - arcs_frame, center.Ty + arcs_frame],
-                                          frame=s_map.coordinate_frame))
+        pixel_pos = np.array(pixel_pos) * u.pix
+        center = s_map.pixel_to_world(pixel_pos[1], pixel_pos[0])
 
-            return s_map
+        arcs_frame = s_map.scale[0] * (self.patch_shape[0] / 2 * u.pix)
+        s_map = s_map.submap(SkyCoord([center.Tx - arcs_frame, center.Tx + arcs_frame],
+                                      [center.Ty - arcs_frame, center.Ty + arcs_frame],
+                                      frame=s_map.coordinate_frame))
+
+        return s_map
 
 
 class RandomPatchEditor(Editor):
@@ -383,6 +385,14 @@ class RandomPatchEditor(Editor):
         assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
         return patch
 
+class SliceEditor(Editor):
+
+    def __init__(self, start, stop):
+        self.start = start
+        self.stop = stop
+
+    def call(self, data, **kwargs):
+        return data[self.start:self.stop]
 
 class BrightestPixelPatchEditor(Editor):
     def __init__(self, patch_shape, idx=0):
@@ -414,7 +424,7 @@ class EITCheckEditor(Editor):
     def call(self, s_map, **kwargs):
         assert np.all(np.logical_not(np.isnan(s_map.data))), 'Found missing block %s' % s_map.date.datetime.isoformat()
         assert 'N_MISSING_BLOCKS =    0' in s_map.meta['comment'], 'Found missing block %s: %s' % (
-        s_map.date.datetime.isoformat(), s_map.meta['comment'])
+            s_map.date.datetime.isoformat(), s_map.meta['comment'])
         return s_map
 
 
@@ -438,3 +448,36 @@ class PassEditor(Editor):
 
     def call(self, data, **kwargs):
         return data
+
+class LimbDarkeningCorrectionEditor(Editor):
+
+    def __init__(self, limb_offset=0.99):
+        self.limb_offset = limb_offset
+
+    def call(self, s_map, **kwargs):
+        coords = all_coordinates_from_map(s_map)
+        radial_distance = (np.sqrt(coords.Tx ** 2 + coords.Ty ** 2) / s_map.rsun_obs).value
+        radial_distance[radial_distance >= self.limb_offset] = np.NaN
+        ideal_correction = np.cos(radial_distance * np.pi / 2)
+
+        condition = np.logical_not(np.isnan(np.ravel(ideal_correction)))
+        map_list = np.ravel(s_map.data)[condition]
+        correction_list = np.ravel(ideal_correction)[condition]
+
+        fit = np.polyfit(correction_list, map_list, 5)
+        poly_fit = np.poly1d(fit)
+
+        map_correction = poly_fit(ideal_correction)
+        corrected_map = s_map.data / map_correction
+
+        return Map(corrected_map.astype(np.float32), s_map.meta)
+
+
+def get_local_correction_table():
+    path = os.path.join(Path.home(), 'aiapy', 'correction_table.dat')
+    if os.path.exists(path):
+        return get_correction_table(path)
+    os.makedirs(os.path.join(Path.home(), 'aiapy'), exist_ok=True)
+    correction_table = get_correction_table()
+    astropy.io.ascii.write(correction_table, path)
+    return correction_table

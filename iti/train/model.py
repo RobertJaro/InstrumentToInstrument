@@ -251,7 +251,7 @@ class UpBlock(nn.Module):
     def __init__(self, in_dim, out_dim, n_convs, skip_connection=True, **kwargs):
         super().__init__()
         assert n_convs >= 1, 'Invalid configuration, requires at least 1 convolution block'
-        self.up = Conv2dBlock(in_dim, out_dim, 4, 2, 1, transpose=True, **kwargs)
+        self.up = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear'), Conv2dBlock(in_dim, out_dim, 3, 1, 1, **kwargs))
         self.convs = nn.Sequential(
             *[Conv2dBlock(out_dim * 2 if i == 0 and skip_connection else out_dim, out_dim, 3, 1, 1, **kwargs)
               for i in range(n_convs)])

@@ -16,7 +16,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, NormScheduler, ValidationHistoryCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v18"
+base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v21"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -59,6 +59,7 @@ validation = ValidationHistoryCallback(trainer,
                                        base_dir, log_iteration)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
+norm_scheduler = NormScheduler(trainer)
 
 plot_settings_A = [
     {"cmap": cm.sohoeit171, "title": "EIT 171", 'vmin': -1, 'vmax': 1},
@@ -97,11 +98,8 @@ v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, lo
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
 callbacks = [save, history, progress, bab_callback, aba_callback, v_callback, full_disc_aba_callback,
-             full_disc_bab_callback, validation]
+             full_disc_bab_callback, norm_scheduler]
 
-# Init generator stack
-# trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),
-#                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
     #

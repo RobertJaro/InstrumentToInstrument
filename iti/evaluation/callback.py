@@ -209,39 +209,39 @@ class HistoryCallback(Callback):
 
     def plotAdversarial(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_adv_a'], label='Generator A')
-        plt.plot(self.loss['loss_gen_adv_b'], label='Generator B')
-        plt.plot(self.loss['loss_dis_a'], label='Discriminator A')
-        plt.plot(self.loss['loss_dis_b'], label='Discriminator B')
+        plt.plot(running_mean(self.loss['loss_gen_adv_a']), label='Generator A')
+        plt.plot(running_mean(self.loss['loss_gen_adv_b']), label='Generator B')
+        plt.plot(running_mean(self.loss['loss_dis_a']), label='Discriminator A')
+        plt.plot(running_mean(self.loss['loss_dis_b']), label='Discriminator B')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_adversarial.jpg"), dpi=100)
         plt.close()
 
     def plotContent(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_a_content'], label='Content A')
-        plt.plot(self.loss['loss_gen_b_content'], label='Content B')
-        plt.plot(self.loss['loss_gen_a_identity_content'], label='Content A Identity')
-        plt.plot(self.loss['loss_gen_b_identity_content'], label='Content B Identity')
+        plt.plot(running_mean(self.loss['loss_gen_a_content']), label='Content A')
+        plt.plot(running_mean(self.loss['loss_gen_b_content']), label='Content B')
+        plt.plot(running_mean(self.loss['loss_gen_a_identity_content']), label='Content A Identity')
+        plt.plot(running_mean(self.loss['loss_gen_b_identity_content']), label='Content B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_content.jpg"), dpi=100)
         plt.close()
 
     def plotNoise(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
-        plt.plot(self.loss['loss_gen_aba_noise'], label='Noise ABA')
-        plt.plot(self.loss['loss_gen_diversity'], label='Diversity')
+        plt.plot(running_mean(self.loss['loss_gen_a_identity_noise']), label='Noise A Identity')
+        plt.plot(running_mean(self.loss['loss_gen_aba_noise']), label='Noise ABA')
+        plt.plot(running_mean(self.loss['loss_gen_diversity']), label='Diversity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_noise.jpg"), dpi=100)
         plt.close()
 
     def plotDistortion(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_a_translate'], label='MAE A')
-        plt.plot(self.loss['loss_gen_b_translate'], label='MAE B')
-        plt.plot(self.loss['loss_gen_a_identity_content'], label='MAE A Identity')
-        plt.plot(self.loss['loss_gen_b_identity_content'], label='MAE B Identity')
+        plt.plot(running_mean(self.loss['loss_gen_a_translate']), label='MAE A')
+        plt.plot(running_mean(self.loss['loss_gen_b_translate']), label='MAE B')
+        plt.plot(running_mean(self.loss['loss_gen_a_identity_content']), label='MAE A Identity')
+        plt.plot(running_mean(self.loss['loss_gen_b_identity_content']), label='MAE B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_distortion.jpg"), dpi=100)
         plt.close()
@@ -375,52 +375,18 @@ class ValidationHistoryCallback(Callback):
         plt.close()
 
 class ProgressCallback(Callback):
-    def __init__(self, trainer: Trainer, log_iteration=1, running_mean=500):
+    def __init__(self, trainer: Trainer, log_iteration=1):
         self.trainer = trainer
         super().__init__(log_iteration)
 
-        self.loss_dis_a             = [np.nan] * running_mean
-        self.loss_dis_b             = [np.nan] * running_mean
-        self.loss_gen_adv_a         = [np.nan] * running_mean
-        self.loss_gen_adv_b         = [np.nan] * running_mean
-        self.loss_gen_a_translate   = [np.nan] * running_mean
-        self.loss_gen_b_translate   = [np.nan] * running_mean
-        self.loss_gen_a_identity    = [np.nan] * running_mean
-        self.loss_gen_b_identity    = [np.nan] * running_mean
-        self.loss_gen_a_content     = [np.nan] * running_mean
-        self.loss_gen_b_content     = [np.nan] * running_mean
-
-
     def call(self, iteration, **kwargs):
-        self.loss_dis_a.append(self.trainer.loss_dis_a.detach().cpu().numpy())
-        self.loss_dis_b.append(self.trainer.loss_dis_b.detach().cpu().numpy())
-        self.loss_gen_adv_a.append(self.trainer.loss_gen_adv_a.detach().cpu().numpy())
-        self.loss_gen_adv_b.append(self.trainer.loss_gen_adv_b.detach().cpu().numpy())
-        self.loss_gen_a_translate.append(self.trainer.loss_gen_a_translate.detach().cpu().numpy())
-        self.loss_gen_b_translate.append(self.trainer.loss_gen_b_translate.detach().cpu().numpy())
-        self.loss_gen_a_identity.append(self.trainer.loss_gen_a_identity.detach().cpu().numpy())
-        self.loss_gen_b_identity.append(self.trainer.loss_gen_b_identity.detach().cpu().numpy())
-        self.loss_gen_a_content.append(self.trainer.loss_gen_a_content.detach().cpu().numpy())
-        self.loss_gen_b_content.append(self.trainer.loss_gen_b_content.detach().cpu().numpy())
-
-        self.loss_dis_a.pop(0)
-        self.loss_dis_b.pop(0)
-        self.loss_gen_adv_a.pop(0)
-        self.loss_gen_adv_b.pop(0)
-        self.loss_gen_a_translate.pop(0)
-        self.loss_gen_b_translate.pop(0)
-        self.loss_gen_a_identity.pop(0)
-        self.loss_gen_b_identity.pop(0)
-        self.loss_gen_a_content.pop(0)
-        self.loss_gen_b_content.pop(0)
-
         status = '[Iteration %08d] [D diff: %.03f/%.03f] [G loss: adv: %.03f/%.03f, recon: %.03f/%.03f, id: %.03f/%.03f, content: %.03f/%.03f]' % (
             iteration + 1,
-            np.nanmean(self.loss_dis_a), np.nanmean(self.loss_dis_b),
-            np.nanmean(self.loss_gen_adv_a), np.nanmean(self.loss_gen_adv_b),
-            np.nanmean(self.loss_gen_a_translate), np.nanmean(self.loss_gen_b_translate),
-            np.nanmean(self.loss_gen_a_identity), np.nanmean(self.loss_gen_b_identity),
-            np.nanmean(self.loss_gen_a_content), np.nanmean(self.loss_gen_b_content),
+            self.trainer.loss_dis_a, self.trainer.loss_dis_b,
+            self.trainer.loss_gen_adv_a, self.trainer.loss_gen_adv_b,
+            self.trainer.loss_gen_a_translate, self.trainer.loss_gen_b_translate,
+            self.trainer.loss_gen_a_identity, self.trainer.loss_gen_b_identity,
+            self.trainer.loss_gen_a_content, self.trainer.loss_gen_b_content,
         )
         logging.info('%s' % status)
 
@@ -439,12 +405,19 @@ class NormScheduler(Callback):
     def __init__(self, trainer:Trainer, step=10000, gamma=0.5, init_iteration=0):
         self.trainer = trainer
         super(NormScheduler, self).__init__(step)
-        self.momentum = 1
+        self.momentum = 0.8
         self.gamma = gamma
         trainer.updateMomentum(self.momentum)
         [self.call(i) for i in range(init_iteration // step)]
 
     def call(self, iteration, **kwargs):
+        if self.momentum == 0:
+            return
         self.momentum *= self.gamma
-        logging.info('Change momentum: %.03f' % self.momentum)
+        if self.momentum < 0.001:
+            self.momentum = 0
+        logging.info('Update normalization momentum: %.03f' % self.momentum)
         self.trainer.updateMomentum(self.momentum)
+
+def running_mean(x, N=50):
+    return np.convolve(x, np.ones((N,))/N, mode='valid')

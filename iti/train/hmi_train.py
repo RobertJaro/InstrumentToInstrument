@@ -19,7 +19,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
 from iti.train.trainer import Trainer, loop
 import numpy as np
 
-base_dir = "/gss/r.jarolim/prediction/iti/hmi_hinode_v6"
+base_dir = "/gss/r.jarolim/prediction/iti/hmi_hinode_v10"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -51,19 +51,20 @@ hinode_files = special_features + sample(quite_sun, len(special_features))
 hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173", (256, 256))
 hmi_dataset = StorageDataset(hmi_dataset,
                              '/gss/r.jarolim/data/converted/hmi_train',
-                             ext_editors=[NanEditor(),RandomPatchEditor((160, 160))])
+                             ext_editors=[RandomPatchEditor((160, 160))])
 
 hinode_dataset = StorageDataset(HinodeDataset(hinode_files),
                                 '/gss/r.jarolim/data/converted/hinode_train',
-                                ext_editors=[NanEditor(), RandomPatchEditor((640, 640))])
+                                ext_editors=[RandomPatchEditor((640, 640))])
 
 hmi_iterator = loop(DataLoader(hmi_dataset, batch_size=1, shuffle=True, num_workers=8))
 hinode_iterator = loop(DataLoader(hinode_dataset, batch_size=1, shuffle=True, num_workers=8))
 
-# Init Plot Callbacks
+# Init Callbacks
 history = HistoryCallback(trainer, base_dir)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
+norm_scheduler = NormScheduler(trainer)
 
 plot_settings_A = [
     {"cmap": "gray", "title": "HMI Continuum", 'vmin': -1, 'vmax': 1}
@@ -75,7 +76,6 @@ plot_settings_B = [
 log_iteration = 1000
 bab_callback = PlotBAB(hinode_dataset.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-bab_callback.call(0)
 
 aba_callback = PlotABA(hmi_dataset.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
@@ -85,7 +85,7 @@ v_callback = VariationPlotBA(hinode_dataset.sample(4), trainer, prediction_dir, 
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
 
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
+callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, norm_scheduler]
 
 # Init generator stack
 # trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),

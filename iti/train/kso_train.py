@@ -12,7 +12,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v9"
+base_dir = "/gss/r.jarolim/prediction/iti/kso_quality_256_v10"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -29,7 +29,7 @@ trainer.cuda()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-q1_dataset = StorageDataset(KSODataset("/gss/r.jarolim/data/kso_general/quality1", 256), '/gss/r.jarolim/data/converted/iti/kso_q1_256')
+q1_dataset = StorageDataset(KSODataset("/gss/r.jarolim/data/anomaly_data_set/quality1", 256), '/gss/r.jarolim/data/converted/iti/kso_anomaly_q1_256')
 q2_dataset = StorageDataset(KSODataset("/gss/r.jarolim/data/kso_general/quality2", 256), '/gss/r.jarolim/data/converted/iti/kso_q2_256')
 
 q1_iterator = loop(DataLoader(q1_dataset, batch_size=1, shuffle=True, num_workers=8))
@@ -57,9 +57,6 @@ lr_scheduler = NormScheduler(trainer, 30000)
 
 callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, lr_scheduler]
 
-# Init generator stack
-# trainer.fill_stack([(next(q2_iterator).float().cuda().detach(),
-#                      next(q1_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
     x_a, x_b = next(q2_iterator), next(q1_iterator)

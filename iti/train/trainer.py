@@ -70,9 +70,11 @@ class Trainer(nn.Module):
                                   norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain a-->b
         self.gen_ba = GeneratorBA(input_dim_b, input_dim_a, noise_dim, depth_generator, depth_noise, upsampling,
                                   n_filters, norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain b-->a
-        self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators, depth_discriminator, discriminator_mode,
+        self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators,
+                                   depth_discriminator, discriminator_mode,
                                    norm=norm)  # discriminator for domain a
-        self.dis_b = Discriminator(input_dim_b, n_filters, n_discriminators, depth_discriminator, discriminator_mode,
+        self.dis_b = Discriminator(input_dim_b, n_filters // 2 ** upsampling, n_discriminators,
+                                   depth_discriminator + upsampling, discriminator_mode,
                                    norm=norm)  # discriminator for domain b
         self.estimator_noise = NoiseEstimator(input_dim_a, n_filters, noise_dim,
                                               depth_noise, norm=norm, activation='relu', pad_type='reflect')
@@ -269,7 +271,7 @@ class Trainer(nn.Module):
         # D loss
         self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba, x_a)
         self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab, x_b)
-        self.loss_dis_total = self.lambda_discriminator * (self.loss_dis_a + self.loss_dis_b)
+        self.loss_dis_total = self.loss_dis_a + self.loss_dis_b
         self.loss_dis_total.backward()
         self.dis_opt.step()
 
@@ -302,7 +304,7 @@ class Trainer(nn.Module):
         # Save generators, discriminators, and optimizers
         state_path = os.path.join(checkpoint_dir, 'checkpoint.pt')
         checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint_%05d.pt' % (iterations + 1))
-        state = {'iteration': iterations,
+        state = {'iteration': iterations + 1,
                  'gen_ab': self.gen_ab.state_dict(),
                  'gen_ba': self.gen_ba.state_dict(),
                  'noise_est': self.estimator_noise.state_dict(),
@@ -311,7 +313,7 @@ class Trainer(nn.Module):
                  'opt_gen': self.gen_opt.state_dict(),
                  'opt_dis': self.dis_opt.state_dict()}
         torch.save(state, state_path)
-        if (iterations + 1) % 50000:
+        if (iterations + 1) % 50000 == 0:
             torch.save(state, checkpoint_path)
 
     def updateMomentum(self, momentum):
