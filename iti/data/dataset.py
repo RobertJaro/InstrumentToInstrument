@@ -15,8 +15,10 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     MapToDataEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
-    PassEditor, BrightestPixelPatchEditor, secchi_norms, LimbDarkeningCorrectionEditor, ContrastNormalizeEditor
+    PassEditor, BrightestPixelPatchEditor, secchi_norms, LimbDarkeningCorrectionEditor, ContrastNormalizeEditor, \
+    hinode_norm
 
+from astropy import units as u
 
 class Norm(Enum):
     CONTRAST = 'contrast'
@@ -125,7 +127,7 @@ class KSODataset(BaseDataset):
                    KSOPrepEditor(),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
-                   ImageNormalizeEditor(0, 1000),
+                   ImageNormalizeEditor(150, 1000),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
 
@@ -325,7 +327,7 @@ class HMIContinuumDataset(BaseDataset):
 class HinodeDataset(BaseDataset):
 
     def __init__(self, path, ext='*.fits'):
-        norm = ImageNormalize(vmin=0, vmax=50000, stretch=LinearStretch(), clip=True)
+        norm = hinode_norm['continuum']
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True)) if isinstance(path, str) else path
 
         editors = [LoadMapEditor(),

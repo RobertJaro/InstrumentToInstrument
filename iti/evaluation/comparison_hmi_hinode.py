@@ -23,7 +23,7 @@ from iti.train.trainer import Trainer
 hmi_shape = 4096
 patch_shape = 1024
 n_patches = hmi_shape // patch_shape
-base_path = '/gss/r.jarolim/prediction/iti/hmi_hinode_v9'
+base_path = '/gss/r.jarolim/iti/hmi_hinode_v10'
 evaluation_path = os.path.join(base_path, "comparison")
 data_path = os.path.join(evaluation_path, "data")
 os.makedirs(data_path, exist_ok=True)

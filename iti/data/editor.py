@@ -38,31 +38,33 @@ class Editor(ABC):
         raise NotImplementedError()
 
 
-sdo_norms = {94: ImageNormalize(vmin=0, vmax=445.5, stretch=AsinhStretch(0.005), clip=True),
-             131: ImageNormalize(vmin=0, vmax=981.3, stretch=AsinhStretch(0.005), clip=True),
-             171: ImageNormalize(vmin=0, vmax=6457.5, stretch=AsinhStretch(0.005), clip=True),
-             193: ImageNormalize(vmin=0, vmax=7757.31, stretch=AsinhStretch(0.005), clip=True),
-             304: ImageNormalize(vmin=0, vmax=3756, stretch=AsinhStretch(0.005), clip=True),
-             211: ImageNormalize(vmin=0, vmax=6539.8, stretch=AsinhStretch(0.005), clip=True),
-             335: ImageNormalize(vmin=0, vmax=915, stretch=AsinhStretch(0.005), clip=True),
+sdo_norms = {94: ImageNormalize(vmin=0, vmax=411, stretch=AsinhStretch(0.005), clip=True),
+             131: ImageNormalize(vmin=0, vmax=1268, stretch=AsinhStretch(0.005), clip=True),
+             171: ImageNormalize(vmin=0, vmax=6463, stretch=AsinhStretch(0.005), clip=True),
+             193: ImageNormalize(vmin=0, vmax=8392, stretch=AsinhStretch(0.005), clip=True),
+             211: ImageNormalize(vmin=0, vmax=4184, stretch=AsinhStretch(0.005), clip=True),
+             304: ImageNormalize(vmin=0, vmax=6481, stretch=AsinhStretch(0.005), clip=True),
+             335: ImageNormalize(vmin=0, vmax=637, stretch=AsinhStretch(0.005), clip=True),
              1600: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
              1700: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
              'mag': ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
              'continuum': ImageNormalize(vmin=0, vmax=70000, stretch=LinearStretch(), clip=True),
              }
 
-soho_norms = {171: ImageNormalize(vmin=0, vmax=6457.5, stretch=AsinhStretch(0.005), clip=True),
-              195: ImageNormalize(vmin=0, vmax=7757.31, stretch=AsinhStretch(0.005), clip=True),
-              284: ImageNormalize(vmin=0, vmax=3000, stretch=AsinhStretch(0.005), clip=True),
-              304: ImageNormalize(vmin=0, vmax=3756, stretch=AsinhStretch(0.005), clip=True),
+soho_norms = {171: ImageNormalize(vmin=0, vmax=10394, stretch=AsinhStretch(0.005), clip=True),
+              195: ImageNormalize(vmin=0, vmax=7609, stretch=AsinhStretch(0.005), clip=True),
+              284: ImageNormalize(vmin=0, vmax=1772, stretch=AsinhStretch(0.005), clip=True),
+              304: ImageNormalize(vmin=0, vmax=8252, stretch=AsinhStretch(0.005), clip=True),
               6173: ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
               }
 
-secchi_norms = {171: ImageNormalize(vmin=0, vmax=5500, stretch=AsinhStretch(0.005), clip=True),
-                195: ImageNormalize(vmin=0, vmax=3000, stretch=AsinhStretch(0.005), clip=True),
-                284: ImageNormalize(vmin=0, vmax=900, stretch=AsinhStretch(0.005), clip=True),
-                304: ImageNormalize(vmin=0, vmax=10000, stretch=AsinhStretch(0.005), clip=True),
+secchi_norms = {171: ImageNormalize(vmin=0, vmax=11523, stretch=AsinhStretch(0.005), clip=True),
+                195: ImageNormalize(vmin=0, vmax=6768, stretch=AsinhStretch(0.005), clip=True),
+                284: ImageNormalize(vmin=0, vmax=1927, stretch=AsinhStretch(0.005), clip=True),
+                304: ImageNormalize(vmin=0, vmax=8378, stretch=AsinhStretch(0.005), clip=True),
                 }
+
+hinode_norm = {'continuum': ImageNormalize(vmin=0, vmax=50000, stretch=LinearStretch(), clip=True)}
 
 
 class LoadFITSEditor(Editor):
@@ -143,7 +145,7 @@ class ReshapeEditor(Editor):
 
     def call(self, data, **kwargs):
         data = data[:self.shape[1], :self.shape[2]]
-        return np.reshape(data, self.shape)
+        return np.reshape(data, self.shape).astype(np.float32)
 
 
 class ExpandDimsEditor(Editor):
@@ -175,6 +177,8 @@ class KSOPrepEditor(Editor):
             warnings.simplefilter("ignore")  # ignore warnings
             kso_map.meta["waveunit"] = "ag"
             kso_map.meta["arcs_pp"] = kso_map.scale[0].value
+            if 'exptime' not in kso_map.meta:
+                kso_map.meta['exptime'] = kso_map.meta['exp_time'] / 1000 # ms to s
 
             if self.add_rotation:
                 angle = -kso_map.meta["angle"]
@@ -227,13 +231,14 @@ class AIAPrepEditor(Editor):
 
 
 class NormalizeExposureEditor(Editor):
-    def __init__(self):
+    def __init__(self, target=1 * u.s):
+        self.target = target
         super().__init__()
 
     def call(self, s_map, **kwargs):
         warnings.simplefilter("ignore")  # ignore warnings
         data = s_map.data
-        data = data / s_map.exposure_time.to(u.s).value
+        data = data / s_map.exposure_time.to(u.s).value * self.target.to(u.s).value
         return Map(data.astype(np.float32), s_map.meta)
 
 

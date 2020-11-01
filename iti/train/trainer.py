@@ -12,10 +12,11 @@ from torch.utils.data import DataLoader
 
 from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
 
+import torch.nn.functional as F
 
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=6,
-                 activation='tanh', norm='in_rs_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
+                 activation='tanh', norm='in_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=4, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
@@ -149,8 +150,16 @@ class Trainer(nn.Module):
         n_gen = self.generateNoise(x_b)
 
         # identity
-        x_b_identity = self.gen_ab(self.downsample(x_b))
-        x_a_identity = self.gen_ba(self.upsample(x_a), n_a)
+        c_diff = self.input_dim_b - self.input_dim_a # assume B has more channels than A
+
+        x_b_downsample = self.downsample(x_b)
+        x_b_downsample = x_b_downsample[:, :-c_diff] if c_diff > 0 else x_b_downsample
+        x_b_identity = self.gen_ab(x_b_downsample)
+
+        x_a_upsample = self.upsample(x_a)
+        x_a_upsample = F.pad(x_a_upsample, [0, 0, 0, 0, 0, c_diff], mode='constant', value=0) if c_diff > 0 else x_a_upsample
+        x_a_identity = self.gen_ba(x_a_upsample, n_a)
+
         n_a_identity = self.estimator_noise(x_a_identity)
 
         # translate 1
@@ -281,8 +290,8 @@ class Trainer(nn.Module):
                                     x_b.size(3) // 2 ** (self.depth_noise + self.upsampling)).cuda())
         return n_gen
 
-    def resume(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, 'checkpoint.pt')
+    def resume(self, checkpoint_dir, epoch=None):
+        path = os.path.join(checkpoint_dir, 'checkpoint.pt') if epoch is None else os.path.join(checkpoint_dir, 'checkpoint_%06d.pt' % epoch)
         if not os.path.exists(path):
             return 0
         state_dict = torch.load(path)
@@ -313,7 +322,7 @@ class Trainer(nn.Module):
                  'opt_gen': self.gen_opt.state_dict(),
                  'opt_dis': self.dis_opt.state_dict()}
         torch.save(state, state_path)
-        if (iterations + 1) % 50000 == 0:
+        if (iterations + 1) % 20000 == 0:
             torch.save(state, checkpoint_path)
 
     def updateMomentum(self, momentum):

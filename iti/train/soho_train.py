@@ -16,7 +16,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, NormScheduler, ValidationHistoryCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/soho_sdo_v21"
+base_dir = "/gss/r.jarolim/iti/soho_sdo_v23"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -59,13 +59,12 @@ validation = ValidationHistoryCallback(trainer,
                                        base_dir, log_iteration)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
-norm_scheduler = NormScheduler(trainer)
 
 plot_settings_A = [
-    {"cmap": cm.sohoeit171, "title": "EIT 171", 'vmin': -1, 'vmax': 1},
-    {"cmap": cm.sohoeit195, "title": "EIT 195", 'vmin': -1, 'vmax': 1},
-    {"cmap": cm.sohoeit284, "title": "EIT 284", 'vmin': -1, 'vmax': 1},
-    {"cmap": cm.sohoeit304, "title": "EIT 304", 'vmin': -1, 'vmax': 1},
+    {"cmap": cm.sdoaia171, "title": "EIT 171", 'vmin': -1, 'vmax': 1},
+    {"cmap": cm.sdoaia193, "title": "EIT 195", 'vmin': -1, 'vmax': 1},
+    {"cmap": cm.sdoaia211, "title": "EIT 284", 'vmin': -1, 'vmax': 1},
+    {"cmap": cm.sdoaia304, "title": "EIT 304", 'vmin': -1, 'vmax': 1},
     {"cmap": "gray", "title": "MDI Magnetogram", 'vmin': -1, 'vmax': 1}
 ]
 plot_settings_B = [
@@ -98,10 +97,12 @@ v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, lo
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
 callbacks = [save, history, progress, bab_callback, aba_callback, v_callback, full_disc_aba_callback,
-             full_disc_bab_callback, norm_scheduler]
+             full_disc_bab_callback]
 
 # Start training
 for it in range(start_it, int(1e8)):
+    if it > 300000:
+        trainer.eval() # fix running stats
     #
     x_a, x_b = next(soho_iterator), next(sdo_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()

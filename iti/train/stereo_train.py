@@ -16,7 +16,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, HistoryCallback, ProgressC
     SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/prediction/iti/stereo_v3"
+base_dir = "/gss/r.jarolim/iti/stereo_v4"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -29,7 +29,7 @@ logging.basicConfig(
 
 # Init Model
 trainer = Trainer(4, 4, upsampling=2, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0,
-                  norm='in_rs_aff')
+                  norm='in_aff')
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -56,7 +56,6 @@ stereo_iterator = loop(DataLoader(stereo_dataset, batch_size=1, shuffle=True, nu
 history = HistoryCallback(trainer, base_dir)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
-norm_scheduler = NormScheduler(trainer)
 
 plot_settings_A = [
     {"cmap": cm.sdoaia171, "title": "SECCHI 171", 'vmin': -1, 'vmax': 1},
@@ -84,7 +83,7 @@ full_disc_aba_callback = PlotABA(STEREODataset("/gss/r.jarolim/data/stereo_prep/
                                  plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
                                  plot_id='full_disc_aba')
 
-callbacks = [history, progress, save, aba_callback, bab_callback, full_disc_aba_callback, norm_scheduler]
+callbacks = [history, progress, save, aba_callback, bab_callback, full_disc_aba_callback]
 
 # Start training
 for it in range(start_it, int(1e8)):

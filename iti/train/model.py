@@ -251,7 +251,7 @@ class UpBlock(nn.Module):
     def __init__(self, in_dim, out_dim, n_convs, skip_connection=True, **kwargs):
         super().__init__()
         assert n_convs >= 1, 'Invalid configuration, requires at least 1 convolution block'
-        self.up = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear'), Conv2dBlock(in_dim, out_dim, 3, 1, 1, **kwargs))
+        self.up = nn.Sequential(nn.UpsamplingBilinear2d(scale_factor=2), Conv2dBlock(in_dim, out_dim, 3, 1, 1, **kwargs))
         self.convs = nn.Sequential(
             *[Conv2dBlock(out_dim * 2 if i == 0 and skip_connection else out_dim, out_dim, 3, 1, 1, **kwargs)
               for i in range(n_convs)])
@@ -301,11 +301,11 @@ class Conv2dBlock(nn.Module):
         elif norm == 'in':
             self.norm = nn.InstanceNorm2d(norm_dim)
         elif norm == 'in_rs':
-            self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.1)
+            self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.01)
         elif norm == 'in_aff':
             self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=False, affine=True)
         elif norm == 'in_rs_aff':
-            self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.1, affine=True)
+            self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True, momentum=0.01, affine=True)
         elif norm == 'ln':
             self.norm = LayerNorm(norm_dim)
         elif norm == 'none' or norm == 'sn':

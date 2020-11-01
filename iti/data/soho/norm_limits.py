@@ -25,5 +25,5 @@ def getMaxIntensity(f):
 
 for c, c_files in zip(channels, channel_files):
     with Pool(8) as p:
-        maxs = [m for m in tqdm(p.imap_unordered(getMaxIntensity, c_files[::10]), total=len(c_files[::10]))]
+        maxs = [m for m in tqdm(p.imap_unordered(getMaxIntensity, c_files), total=len(c_files))]
     print(c, 'MAX:', np.mean(maxs) + 0.5 * np.std(maxs))

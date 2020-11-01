@@ -16,7 +16,7 @@ from iti.train.trainer import Trainer
 hmi_shape = 4096
 patch_shape = 1024
 n_patches = hmi_shape // patch_shape
-base_path = '/gss/r.jarolim/prediction/iti/hmi_hinode_v9'
+base_path = '/gss/r.jarolim/iti/hmi_hinode_v10'
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 
 hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173")
@@ -26,7 +26,7 @@ iter = loader.__iter__()
 
 trainer = Trainer(1, 1, upsampling=2, norm='in_rs_aff', lambda_diversity=0)
 trainer.cuda()
-iteration = trainer.resume(base_path)
+iteration = trainer.resume(base_path, epoch=140000)
 
 
 with torch.no_grad():
