@@ -127,7 +127,7 @@ class KSODataset(BaseDataset):
                    KSOPrepEditor(),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
-                   ImageNormalizeEditor(150, 1000),
+                   ImageNormalizeEditor(0, 1000),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
 
@@ -171,7 +171,7 @@ class KSOFilmDataset(BaseDataset):
 
 class SDODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, **kwargs):
+    def __init__(self, path, patch_shape=None, base_names=None, **kwargs):
         data_sets = [AIADataset(os.path.join(path, '171'), 171, **kwargs),
                      AIADataset(os.path.join(path, '193'), 193, **kwargs),
                      AIADataset(os.path.join(path, '211'), 211, **kwargs),
@@ -179,10 +179,11 @@ class SDODataset(BaseDataset):
                      HMIDataset(os.path.join(path, '6173'), 'mag', **kwargs)
                      ]
         # align data in time
-        basenames = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
-        basenames = set(basenames[0]).intersection(*basenames)
+        if base_names is None:
+            base_names = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
+            base_names = set(base_names[0]).intersection(*base_names)
         for data_set in data_sets:
-            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in basenames])
+            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in base_names])
 
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
@@ -192,18 +193,20 @@ class SDODataset(BaseDataset):
 
 class SOHODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, **kwargs):
+    def __init__(self, path, patch_shape=None, base_names=None, **kwargs):
         data_sets = [EITDataset(os.path.join(path, 'eit_171'), 171, **kwargs),
                      EITDataset(os.path.join(path, 'eit_195'), 195, **kwargs),
                      EITDataset(os.path.join(path, 'eit_284'), 284, **kwargs),
                      EITDataset(os.path.join(path, 'eit_304'), 304, **kwargs),
                      MDIDataset(os.path.join(path, 'mdi_mag'), **kwargs)
                      ]
+        self.data_sets = data_sets
         # align data in time
-        basenames = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
-        basenames = set(basenames[0]).intersection(*basenames)
+        if base_names is None:
+            base_names = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
+            base_names = set(base_names[0]).intersection(*base_names)
         for data_set in data_sets:
-            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in basenames])
+            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in base_names])
 
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
@@ -213,17 +216,19 @@ class SOHODataset(BaseDataset):
 
 class STEREODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, **kwargs):
+    def __init__(self, path, patch_shape=None, base_names=None, **kwargs):
         data_sets = [SECCHIDataset(os.path.join(path, 'secchi_171'), 171, **kwargs),
                      SECCHIDataset(os.path.join(path, 'secchi_195'), 195, **kwargs),
                      SECCHIDataset(os.path.join(path, 'secchi_284'), 284, **kwargs),
                      SECCHIDataset(os.path.join(path, 'secchi_304'), 304, **kwargs),
                      ]
+        self.data_sets = data_sets
         # align data in time
-        basenames = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
-        basenames = set(basenames[0]).intersection(*basenames)
+        if base_names is None:
+            base_names = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
+            base_names = set(base_names[0]).intersection(*base_names)
         for data_set in data_sets:
-            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in basenames])
+            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in base_names])
 
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
@@ -312,7 +317,7 @@ class HMIContinuumDataset(BaseDataset):
 
     def __init__(self, path, patch_shape=None, ext='*.fits', **kwargs):
         norm = sdo_norms['continuum']
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True)) if not isinstance(path, list) else path
 
         editors = [LoadMapEditor(),
                    ScaleEditor(0.6),

@@ -101,8 +101,8 @@ callbacks = [save, history, progress, bab_callback, aba_callback, v_callback, fu
 
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 300000:
-        trainer.eval() # fix running stats
+    if it > 250000:
+        trainer.eval()  # fix running stats
     #
     x_a, x_b = next(soho_iterator), next(sdo_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()

@@ -16,7 +16,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, HistoryCallback, ProgressC
     SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/stereo_v4"
+base_dir = "/gss/r.jarolim/iti/stereo_v5"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -29,7 +29,7 @@ logging.basicConfig(
 
 # Init Model
 trainer = Trainer(4, 4, upsampling=2, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0,
-                  norm='in_aff')
+                  norm='in_rs_aff')
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
@@ -87,6 +87,8 @@ callbacks = [history, progress, save, aba_callback, bab_callback, full_disc_aba_
 
 # Start training
 for it in range(start_it, int(1e8)):
+    if it > 100000:
+        trainer.eval()  # fix running stats
     x_a, x_b = next(stereo_iterator), next(sdo_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     #

@@ -213,6 +213,7 @@ class HistoryCallback(Callback):
         plt.plot(running_mean(self.loss['loss_gen_adv_b']), label='Generator B')
         plt.plot(running_mean(self.loss['loss_dis_a']), label='Discriminator A')
         plt.plot(running_mean(self.loss['loss_dis_b']), label='Discriminator B')
+        plt.ylim((0, 0.9))
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_adversarial.jpg"), dpi=100)
         plt.close()

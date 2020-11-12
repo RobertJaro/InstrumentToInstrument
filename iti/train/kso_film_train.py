@@ -14,7 +14,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/film_v6"
+base_dir = "/gss/r.jarolim/iti/film_v5"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -26,7 +26,7 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, norm='in_rs_aff')
+trainer = Trainer(1, 1, norm='in_aff')
 trainer.cuda()
 trainer.train()
 start_it = trainer.resume(base_dir)

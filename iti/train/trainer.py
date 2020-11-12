@@ -291,7 +291,7 @@ class Trainer(nn.Module):
         return n_gen
 
     def resume(self, checkpoint_dir, epoch=None):
-        path = os.path.join(checkpoint_dir, 'checkpoint.pt') if epoch is None else os.path.join(checkpoint_dir, 'checkpoint_%06d.pt' % epoch)
+        path = os.path.join(checkpoint_dir, 'checkpoint.pt') if epoch is None else os.path.join(checkpoint_dir, 'checkpoint_%d.pt' % epoch)
         if not os.path.exists(path):
             return 0
         state_dict = torch.load(path)

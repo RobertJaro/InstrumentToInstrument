@@ -3,6 +3,7 @@ import os
 from random import sample
 
 from dateutil.parser import parse
+from matplotlib.colors import Normalize
 
 from iti.download.hmi_continuum_download import HMIContinuumFetcher
 
@@ -23,18 +24,21 @@ from iti.train.trainer import Trainer
 hmi_shape = 4096
 patch_shape = 1024
 n_patches = hmi_shape // patch_shape
-base_path = '/gss/r.jarolim/iti/hmi_hinode_v10'
+base_path = '/gss/r.jarolim/iti/hmi_hinode_v12'
 evaluation_path = os.path.join(base_path, "comparison")
 data_path = os.path.join(evaluation_path, "data")
 os.makedirs(data_path, exist_ok=True)
 
-hinode_files = glob.glob('/gss/r.jarolim/data/hinode/level1/*.fits')
-hinode_sample = sample(hinode_files, 4)
+# hinode_files = glob.glob('/gss/r.jarolim/data/hinode/level1/*.fits')
+# hinode_sample = sample(hinode_files, 4)
+hinode_sample = ['/gss/r.jarolim/data/hinode/level1/FG20141022_141026.5.fits']
 hinode_dates = [parse(f[-22:-7].replace('_', 'T')) for f in hinode_sample]
 
 hinode_dataset = HinodeDataset(hinode_sample)
 for f, d in zip(hinode_dataset.data, hinode_dataset):
-    imsave(os.path.join(evaluation_path, 'real_hinode_%s.jpg' % os.path.basename(f)), d[0])
+    vmin = np.min(d[0])
+    vmax = np.max(d[0])
+    imsave(os.path.join(evaluation_path, 'real_hinode_%s.jpg' % os.path.basename(f)), Normalize(vmin=vmin, vmax=vmax)(d[0]))
 
 fetcher = HMIContinuumFetcher(ds_path=data_path)
 fetcher.fetchDates(hinode_dates)
@@ -66,5 +70,5 @@ with torch.no_grad():
         hinode_patches = np.array(hinode_patches).reshape((n_patches, n_patches, hmi_shape, hmi_shape))
         hinode_img = np.array(hinode_patches).transpose(0,2,1,3).reshape(-1,hinode_patches.shape[1]*hinode_patches.shape[3])
 
-        imsave(os.path.join(evaluation_path, 'hmi_%s.jpg' % os.path.basename(f)), hmi_img)
-        imsave(os.path.join(evaluation_path,'hinode_%s.jpg' % os.path.basename(f)), hinode_img)
+        imsave(os.path.join(evaluation_path, 'hmi_%s.jpg' % os.path.basename(f)), Normalize(vmin=-1, vmax=1)(hmi_img))
+        imsave(os.path.join(evaluation_path,'hinode_%s.jpg' % os.path.basename(f)), Normalize(vmin=vmin, vmax=vmax)(hinode_img))

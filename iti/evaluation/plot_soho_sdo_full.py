@@ -2,6 +2,7 @@ import os
 
 from astropy.coordinates import SkyCoord
 from matplotlib.colors import Normalize
+from skimage.io import imsave
 from sunpy.map import Map
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
@@ -25,7 +26,7 @@ soho_shape = 1024
 base_path = "/gss/r.jarolim/iti/soho_sdo_v23"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid", base_names=['2000-11-12T01:19.fits'])
+soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid", base_names=['2001-12-31T01:19.fits'])
 soho_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
 loader = DataLoader(soho_dataset, batch_size=1)
 iter = loader.__iter__()
@@ -65,29 +66,8 @@ sdo_cmaps = [
     plt.get_cmap('gray')
 ]
 
-reference_map, _ = LoadMapEditor().call(soho_dataset.data_sets[0].data[0])
-reference_map = NormalizeRadiusEditor(soho_shape).call(reference_map)
-
-fig, axs = plt.subplots(2, 5, figsize=(5 * 4, 2 * 4), sharex=True, sharey=True)
-sub_frame_x = [-500, -350] * u.arcsec
-sub_frame_y = [-450, -300] * u.arcsec
-
 for c in range(5):
-    s_map = Map(soho_img[0, c], reference_map.meta)
-    s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
-    s_map.plot(axes=axs[0, c], cmap=soho_cmaps[c], title='', norm=Normalize(vmin=-1, vmax=1))
-
-reference_map = reference_map.resample(sdo_img.shape[2:] * u.pix)
-for c in range(5):
-    s_map = Map(sdo_img[0, c], reference_map.meta)
-    s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
-    s_map.plot(axes=axs[1, c], cmap=sdo_cmaps[c], title='', norm=Normalize(vmin=-1, vmax=1))
-
-[(ax.set_xlabel(None), ax.set_ylabel(None)) for ax in np.ravel(axs)]
-fontsize = 13
-axs[0, 0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-axs[1, 0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-[ax.set_xlabel('Helioprojective longitude [arcsec]', fontsize=fontsize) for ax in axs[1]]
-
-plt.tight_layout()
-plt.savefig(os.path.join(base_path, 'evaluation/comparison_%06d.jpg' % iteration), dpi=300)
+    imsave(os.path.join(base_path, 'evaluation/full_disc_%d_%d_soho.jpg' % (iteration, c)),
+           soho_cmaps[c](plt.Normalize(vmin=-1, vmax=1)(soho_img[0, c]))[..., :3])
+    imsave(os.path.join(base_path, 'evaluation/full_disc_%d_%d_sdo.jpg' % (iteration, c)),
+           sdo_cmaps[c](plt.Normalize(vmin=-1, vmax=1)(sdo_img[0, c]))[..., :3])

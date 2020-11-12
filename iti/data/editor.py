@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import shutil
@@ -106,6 +107,10 @@ class MapToDataEditor(Editor):
     def call(self, map, **kwargs):
         return map.data, {"header": map.meta}
 
+class DataToMapEditor(Editor):
+
+    def call(self, data, **kwargs):
+        return Map(data[0], kwargs['header'])
 
 class ContrastNormalizeEditor(Editor):
 
@@ -265,7 +270,6 @@ class NormalizeRadiusEditor(Editor):
             pad_y = s_map.data.shape[1] - self.resolution
             s_map = s_map.submap([pad_x // 2, pad_y // 2] * u.pix,
                                  [pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
-
         s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
         return s_map
 
@@ -448,11 +452,31 @@ class PaddingEditor(Editor):
             pad.insert(0, (0, 0))
         return np.pad(data, pad, 'constant', constant_values=np.min(data))
 
+class ReductionEditor(Editor):
+
+    def call(self, data, **kwargs):
+        s = data.shape
+        p = kwargs['patch_shape']
+        x_pad = (s[-2] - p[0]) / 2
+        y_pad = (s[-1] - p[1]) / 2
+        pad = [(int(np.floor(x_pad)), int(np.ceil(x_pad))),
+               (int(np.floor(y_pad)), int(np.ceil(y_pad)))]
+        return data[..., pad[0][0]:-pad[0][1], pad[1][0]:-pad[1][1]]
+
 
 class PassEditor(Editor):
 
     def call(self, data, **kwargs):
         return data
+
+class LambdaEditor(Editor):
+
+    def __init__(self, f):
+        self.f = f
+
+    def call(self, data, **kwargs):
+        return self.f(data, **kwargs)
+
 
 class LimbDarkeningCorrectionEditor(Editor):
 

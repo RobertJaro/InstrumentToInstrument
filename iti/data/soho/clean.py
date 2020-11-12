@@ -17,18 +17,32 @@ def clean(path):
             print(header['COMMENT'][-1])
             #os.remove(f)
             continue
-        print('valid')
+        #print('valid')
 
-clean('/gss/r.jarolim/data/soho/valid/eit_171/*.fits')
-clean('/gss/r.jarolim/data/soho/valid/eit_195/*.fits')
-clean('/gss/r.jarolim/data/soho/valid/eit_284/*.fits')
-clean('/gss/r.jarolim/data/soho/valid/eit_304/*.fits')
+def clean_mdi(path):
+    files = glob.glob(path)
+    for f in tqdm(files):
+        data = getdata(f)
+        header = getheader(f)
+        if data.shape != (1024, 1024):
+            print(data.shape)
+            #os.remove(f)
+            continue
+        #print('valid')
 
-lists = [glob.glob('/gss/r.jarolim/data/soho/valid/eit_171/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/valid/eit_195/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/valid/eit_284/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/valid/eit_304/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/valid/mdi_mag/*.fits'),]
+# clean('/gss/r.jarolim/data/soho/train/eit_171/*.fits')
+# clean('/gss/r.jarolim/data/soho/train/eit_195/*.fits')
+# clean('/gss/r.jarolim/data/soho/train/eit_284/*.fits')
+clean('/gss/r.jarolim/data/soho/train/eit_304/*.fits')
+# clean_mdi('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits')
+
+lists = [glob.glob('/gss/r.jarolim/data/soho/train/eit_171/*.fits'),
+         glob.glob('/gss/r.jarolim/data/soho/train/eit_195/*.fits'),
+         glob.glob('/gss/r.jarolim/data/soho/train/eit_284/*.fits'),
+         glob.glob('/gss/r.jarolim/data/soho/train/eit_304/*.fits'),
+         glob.glob('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits'),]
 joined_files = set.intersection(*map(set,[[os.path.basename(f) for f in files] for files in lists]))
+
+
 
 #[len([os.remove(f) for f in files if os.path.basename(f) not in joined_files]) for files in lists]

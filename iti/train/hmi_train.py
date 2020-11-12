@@ -47,10 +47,10 @@ for f in tqdm(hinode_files):
         special_features.append(f)
     else:
         quite_sun.append(f)
-hinode_files = special_features + sample(quite_sun, len(special_features))
+hinode_files = special_features + sample(quite_sun, len(special_features) * 2)
 
 # Init Dataset
-hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173", (256, 256))
+hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173", (512, 512))
 hmi_dataset = StorageDataset(hmi_dataset,
                              '/gss/r.jarolim/data/converted/hmi_train',
                              ext_editors=[RandomPatchEditor((160, 160))])
@@ -91,7 +91,7 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
 #                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 100000:
+    if it > 250000:
         trainer.eval()  # fix running stats
     x_a, x_b = next(hmi_iterator), next(hinode_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()

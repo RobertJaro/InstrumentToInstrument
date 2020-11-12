@@ -12,7 +12,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/kso_quality_512_v1"
+base_dir = "/gss/r.jarolim/iti/kso_quality_512_v3"
 resolution = 512
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
@@ -74,6 +74,8 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, ab
 
 # Start training
 for it in range(start_it, int(1e8)):
+    if it > 100000:
+        trainer.eval()  # fix running stats
     x_a, x_b = next(q2_iterator), next(q1_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     trainer.discriminator_update(x_a, x_b)
