@@ -352,7 +352,7 @@ class SECCHIDataset(BaseDataset):
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(1024),
+                   NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]

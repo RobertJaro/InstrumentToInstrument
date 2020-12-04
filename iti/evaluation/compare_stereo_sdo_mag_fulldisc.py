@@ -20,21 +20,20 @@ from iti.train.trainer import Trainer
 from astropy import units as u
 import numpy as np
 
-stereo_shape = 1024
-base_path = "/gss/r.jarolim/iti/stereo_mag_v4"
+stereo_shape = 256
+base_path = "/gss/r.jarolim/iti/stereo_mag_v5"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", base_names=['2007-01-01T05:03.fits'])
-stereo_dataset.addEditor(PaddingEditor((stereo_shape, stereo_shape)))
+stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", base_names=['2007-01-01T05:03.fits'], resolution=256)
 loader = DataLoader(stereo_dataset, batch_size=1)
 iter = loader.__iter__()
 
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", base_names=['2007-01-01T01:19.fits'])
-soho_dataset.addEditor(PaddingEditor((stereo_shape, stereo_shape)))
+soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", base_names=['2007-01-01T01:19.fits'], resolution=256)
 
-trainer = Trainer(4, 5, upsampling=2, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0, norm='in_rs_aff')
+trainer = Trainer(4, 5, discriminator_mode=DiscriminatorMode.SINGLE,
+                  norm='in_aff')
 trainer.cuda()
-iteration = trainer.resume(base_path)
+iteration = trainer.resume(base_path, epoch=60000)
 
 with torch.no_grad():
     stereo_img = next(iter).float().cuda()
@@ -44,8 +43,6 @@ with torch.no_grad():
     soho_img = np.array([soho_dataset[0]])
 
 soho_img[0, 4] = np.flip(np.flip(soho_img[0, 4], 0), 1)
-soho_img[0, 4] = np.abs(soho_img[0, 4])
-iti_img[0, 4] = (iti_img[0, 4] + 1) / 2
 
 stereo_cmaps = [
     cm.sdoaia171,
@@ -66,12 +63,9 @@ reference_map, _ = LoadMapEditor().call(stereo_dataset.data_sets[0].data[0])
 reference_map = NormalizeRadiusEditor(stereo_shape).call(reference_map)
 
 fig, axs = plt.subplots(3, 5, figsize=(20, 12), sharex=True, sharey=True)
-sub_frame_x = [-300, 100] * u.arcsec
-sub_frame_y = [-500, -100] * u.arcsec
 
 for c in range(4):
     s_map = Map(stereo_img[0, c], reference_map.meta)
-    #s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
     title = 'STEREO' if c == 0 else ''
     s_map.plot(axes=axs[0, c], cmap=stereo_cmaps[c], norm=Normalize(vmin=-1, vmax=1), title=title)
 
@@ -80,16 +74,14 @@ axs[0, 4].set_axis_off()
 reference_map = reference_map.resample(iti_img.shape[2:] * u.pix)
 for c in range(5):
     s_map = Map(iti_img[0, c], reference_map.meta)
-    #s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
-    norm = Normalize(vmin=-.5, vmax=.5) if c == 4 else Normalize(vmin=-1, vmax=1)
+    norm = Normalize(vmin=-1, vmax=1)
     title = 'ITI' if c == 0 else ''
     s_map.plot(axes=axs[1, c], cmap=sdo_cmaps[c], norm=norm, title=title)
 
 reference_map = reference_map.resample(soho_img.shape[2:] * u.pix)
 for c in range(5):
     s_map = Map(soho_img[0, c], reference_map.meta)
-    #s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
-    norm = Normalize(vmin=-.5, vmax=.5) if c == 4 else Normalize(vmin=-1, vmax=1)
+    norm = Normalize(vmin=-.1, vmax=.1) if c == 4 else Normalize(vmin=-1, vmax=1)
     title = 'SOHO' if c == 0 else ''
     s_map.plot(axes=axs[2, c], cmap=sdo_cmaps[c], norm=norm, title=title)
 

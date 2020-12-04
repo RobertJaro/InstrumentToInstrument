@@ -47,7 +47,7 @@ for f in tqdm(hinode_files):
     if len(special_features) >= 10:
         break
 
-hinode_sample = special_features  # + ['/gss/r.jarolim/data/hinode/level1/FG20141022_141026.5.fits']
+hinode_sample = ['/gss/r.jarolim/data/hinode/level1/FG20141022_141026.5.fits']#special_features  # + ['/gss/r.jarolim/data/hinode/level1/FG20141022_141026.5.fits']
 hinode_dates = [parse(f[-22:-7].replace('_', 'T')) for f in hinode_sample]
 
 fetcher = HMIContinuumFetcher(ds_path=data_path)
@@ -169,6 +169,7 @@ for hmi_map, hinode_map in zip(hmi_dataset, hinode_dataset):
         #
         submap = upsampled_hmi_map.submap(hinode_map.bottom_left_coord, hinode_map.top_right_coord)
         shift = getShift(submap.data, hinode_map.data)
+        print('Shift:', shift)
         hinode_map.meta['crpix1'] -= shift[0]
         hinode_map.meta['crpix2'] -= shift[1]
         #

@@ -15,7 +15,7 @@ from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstima
 import torch.nn.functional as F
 
 class Trainer(nn.Module):
-    def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64, res_blocks=6,
+    def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
                  activation='tanh', norm='in_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=4, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
@@ -31,7 +31,6 @@ class Trainer(nn.Module):
         logging.info("Noise Depth:   %d" % depth_noise)
         logging.info("Number of Discriminators:   %d" % n_discriminators)
         logging.info("Discriminator Mode:   %s" % discriminator_mode)
-        logging.info("Residual Blocks:   %d" % res_blocks)
         logging.info("Base Number of Filters:   %d" % n_filters)
         logging.info("Activation:   %s" % str(activation))
         logging.info("Normalization:   %s" % str(norm))
@@ -51,7 +50,6 @@ class Trainer(nn.Module):
         self.input_dim_b = input_dim_b
         ############################## MODEL CONFIG ###############################
         self.n_filters = n_filters
-        self.res_blocks = res_blocks
         self.depth_generator = depth_generator
         self.depth_discriminator = depth_discriminator
         self.depth_noise = depth_noise

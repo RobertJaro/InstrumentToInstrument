@@ -91,3 +91,4 @@ axs[1, 0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
 
 plt.tight_layout()
 plt.savefig(os.path.join(base_path, 'evaluation/comparison_%06d.jpg' % iteration), dpi=300)
+plt.close()

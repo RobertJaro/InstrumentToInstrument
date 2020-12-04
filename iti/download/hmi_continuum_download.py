@@ -16,7 +16,9 @@ from sunpy.map import Map
 
 class HMIContinuumFetcher:
 
-    def __init__(self, ds_path, num_worker_threads=8):
+    def __init__(self, ds_path, num_worker_threads=8, ignore_quality=False, series='hmi.Ic_720s'):
+        self.series = series
+        self.ignore_quality = ignore_quality
         self.ds_path = ds_path
         os.makedirs(ds_path, exist_ok=True)
 
@@ -82,10 +84,10 @@ class HMIContinuumFetcher:
         logging.info('Start download: %s' % id)
         # query continuum
         time_param = '%sZ' % time.isoformat('_', timespec='seconds')
-        ds_hmi = 'hmi.Ic_720s[%s]{continuum}' % time_param
+        ds_hmi = '%s[%s]{continuum}' % (self.series, time_param)
         keys_hmi = self.drms_client.keys(ds_hmi)
         header_hmi, segment_hmi = self.drms_client.query(ds_hmi, key=','.join(keys_hmi), seg='continuum')
-        if len(header_hmi) != 1 or np.any(header_hmi.QUALITY != 0):
+        if len(header_hmi) != 1 or (np.any(header_hmi.QUALITY != 0) and not self.ignore_quality):
             raise Exception('No valid data found!')
 
         for (idx, h), s in zip(header_hmi.iterrows(), segment_hmi.continuum):

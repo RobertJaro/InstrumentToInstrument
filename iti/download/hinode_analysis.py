@@ -47,12 +47,12 @@ hinode_map.plot()
 
 
 #%%
-srpp = hmi_map.scale[0] / hmi_map.rsun_obs * (hmi_map.data.shape[0] * u.pix)
+srpp = hmi_map.lin_scale[0] / hmi_map.rsun_obs * (hmi_map.data.shape[0] * u.pix)
 
 #%%
 s_map = hinode_map
 
-scale_factor = s_map.scale[0] / 0.15
+scale_factor = s_map.lin_scale[0] / 0.15
 s_map = s_map.rotate(recenter=True, scale=scale_factor.value, missing=s_map.min(), order=3)
 s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
 

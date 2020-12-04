@@ -131,6 +131,7 @@ for c, (ax, title) in enumerate(zip(axs, [r'171 $\AA$', r'193 $\AA$', r'211 $\AA
 
 axs[0].legend(loc='upper right')
 axs[-2].set_ylim(-10, 10)
+axs[-2].set_ylabel('Mean Magnetic Flux')
 
 axs[-1].plot(sn_date, sn_data[:, 3], color='black')
 axs[-1].set_ylabel('Sunspot Number')
