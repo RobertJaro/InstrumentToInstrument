@@ -2,6 +2,7 @@ import glob
 import logging
 import os
 from datetime import datetime
+from random import randint
 
 import numpy as np
 import torch
@@ -16,7 +17,7 @@ import torch.nn.functional as F
 
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
-                 activation='tanh', norm='in_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
+                 activation='tanh', norm='in_rs_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=4, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
@@ -85,8 +86,8 @@ class Trainer(nn.Module):
         dis_params = list(self.dis_a.parameters()) + list(self.dis_b.parameters())
         gen_params = list(self.gen_ab.parameters()) + list(self.gen_ba.parameters()) + list(
             self.estimator_noise.parameters())
-        self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
-        self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad], lr=learning_rate, betas=(0.5, 0.9))
+        self.dis_opt = torch.optim.Adam(dis_params, lr=learning_rate, betas=(0.5, 0.9))
+        self.gen_opt = torch.optim.Adam(gen_params, lr=learning_rate, betas=(0.5, 0.9))
 
         # Training utils
         self.gen_stack = []
@@ -148,15 +149,25 @@ class Trainer(nn.Module):
         n_gen = self.generateNoise(x_b)
 
         # identity
-        c_diff = self.input_dim_b - self.input_dim_a # assume B has more channels than A
+        if self.input_dim_a > self.input_dim_b:
+            x_b_downsample = self.downsample(x_b)
+            x_b_downsample = torch.repeat_interleave(x_b_downsample, repeats=self.input_dim_a, dim=1)
+            x_b_identity = self.gen_ab(x_b_downsample)
 
-        x_b_downsample = self.downsample(x_b)
-        x_b_downsample = x_b_downsample[:, :-c_diff] if c_diff > 0 else x_b_downsample
-        x_b_identity = self.gen_ab(x_b_downsample)
+            x_a_upsample = self.upsample(x_a)
+            idx = randint(0, self.input_dim_a - 1)
+            x_a_upsample = x_a_upsample[:, idx:idx + 1]
+            x_a_identity = self.gen_ba(x_a_upsample, n_a)
+        else: # channel difference 0 == no change of dims
+            c_diff = self.input_dim_b - self.input_dim_a
 
-        x_a_upsample = self.upsample(x_a)
-        x_a_upsample = F.pad(x_a_upsample, [0, 0, 0, 0, 0, c_diff], mode='constant', value=0) if c_diff > 0 else x_a_upsample
-        x_a_identity = self.gen_ba(x_a_upsample, n_a)
+            x_b_downsample = self.downsample(x_b)
+            x_b_downsample = x_b_downsample[:, :-c_diff] if c_diff > 0 else x_b_downsample
+            x_b_identity = self.gen_ab(x_b_downsample)
+
+            x_a_upsample = self.upsample(x_a)
+            x_a_upsample = F.pad(x_a_upsample, [0, 0, 0, 0, 0, c_diff], mode='constant', value=0) if c_diff > 0 else x_a_upsample
+            x_a_identity = self.gen_ba(x_a_upsample, n_a)
 
         n_a_identity = self.estimator_noise(x_a_identity)
 
@@ -322,6 +333,8 @@ class Trainer(nn.Module):
         torch.save(state, state_path)
         if (iterations + 1) % 20000 == 0:
             torch.save(state, checkpoint_path)
+            torch.save(self.gen_ab, os.path.join(checkpoint_dir, 'generator_AB.pt'))
+            torch.save(self.gen_ba, os.path.join(checkpoint_dir, 'generator_BA.pt'))
 
     def updateMomentum(self, momentum):
         for module in self.modules():

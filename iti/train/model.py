@@ -2,6 +2,7 @@ from enum import Enum
 
 import torch
 from torch import nn
+from torch.autograd import Variable
 from torch.nn import LayerNorm, init
 
 
@@ -63,6 +64,10 @@ class GeneratorBA(nn.Module):
     def __init__(self, input_dim, output_dim, noise_dim, depth, depth_noise, n_downsample, dim=64, output_activ='tanh', **kwargs):
         super().__init__()
         self.depth = depth
+        self.noise_dim = noise_dim
+        self.depth_noise = depth_noise
+        self.n_downsample = n_downsample
+
         dim = dim // (2 ** n_downsample)
         self.from_image = Conv2dBlock(input_dim, dim, 7, 1, 3, **kwargs)
         ##################### Downsampling #####################
@@ -117,10 +122,17 @@ class GeneratorBA(nn.Module):
         x = self.to_image(x)
         return x
 
+    def forwardRandomNoise(self, image):
+        n_gen = Variable(torch.rand(image.size(0), self.noise_dim,
+                                    image.size(2) // 2 ** (self.depth_noise + self.n_downsample),
+                                    image.size(3) // 2 ** (self.depth_noise + self.n_downsample)).cuda())
+        return self.forward(image, noise=n_gen)
+
+
 class Discriminator(nn.Module):
     def __init__(self, input_dim, n_filters, num_scales=3, depth_discriminator=4,
                  discriminator_mode=DiscriminatorMode.SINGLE,
-                 norm='in'):
+                 norm='in_rs_aff'):
         self.pad_type = 'reflect'
         self.activ = 'relu'
         self.norm = norm
@@ -194,18 +206,22 @@ class Discriminator(nn.Module):
             # content loss of combined discriminator
             x = input_real
             y = input_fake
-            for layer in self.discs[i][:-1]:
+            for j, layer in enumerate(self.discs[i][:-1]):
                 x = layer(x)
                 y = layer(y)
+                if j == 0: # skip first layer (no normalization)
+                    continue
                 loss.append(torch.mean(torch.abs(x - y), [1, 2, 3]))
 
             # content loss of channel discriminator
             for j, discs in enumerate(self.channel_discs.values()):
                 x = input_real[:, j:j + 1]
                 y = input_fake[:, j:j + 1]
-                for layer in discs[i][:-1]:
+                for k, layer in enumerate(discs[i][:-1]):
                     x = layer(x)
                     y = layer(y)
+                    if k == 0:  # skip first layer (no normalization)
+                        continue
                     loss.append(torch.mean(torch.abs(x - y), [1, 2, 3]))
 
             input_real = self.downsample(input_real)

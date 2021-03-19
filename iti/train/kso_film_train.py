@@ -14,9 +14,10 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, NormScheduler
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/film_v5"
+base_dir = "/gss/r.jarolim/iti/film_v7"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
+resolution = 512
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,19 +27,19 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(1, 1, norm='in_aff')
+trainer = Trainer(1, 1)
 trainer.cuda()
 trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-ccd_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_general/quality1", 512)
-film_dataset = KSOFilmDataset("/gss/r.jarolim/data/filtered_kso_plate", 512)
-ccd_storage = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_flat_q1_512', ext_editors=[RandomPatchEditor((256, 256))])
-film_storage = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_512', ext_editors=[RandomPatchEditor((256, 256))])
+ccd_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution)
+film_dataset = KSOFilmDataset("/gss/r.jarolim/data/filtered_kso_plate", resolution)
+ccd_storage = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution, ext_editors=[RandomPatchEditor((256, 256))])
+film_storage = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution, ext_editors=[RandomPatchEditor((256, 256))])
 
-ccd_plot = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_flat_q1_512')
-film_plot = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_512')
+ccd_plot = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution)
+film_plot = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution)
 
 kso_ccd_iterator = loop(DataLoader(ccd_storage, batch_size=1, shuffle=True, num_workers=8))
 kso_film_iterator = loop(DataLoader(film_storage, batch_size=1, shuffle=True, num_workers=8))
@@ -64,12 +65,17 @@ cutout_callback = PlotABA(film_storage.sample(6), trainer, prediction_dir, log_i
 v_callback = VariationPlotBA(ccd_plot.sample(3), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
+
+aba_callback.call(0)
+bab_callback.call(0)
+cutout_callback.call(0)
 callbacks = [history, progress, save, bab_callback, aba_callback,cutout_callback, v_callback]
 
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 150000:
-        trainer.eval() # fix running stats
+    if it > 100000:
+        trainer.gen_ab.eval()  # fix running stats
+        trainer.gen_ba.eval()  # fix running stats
     x_a, x_b = next(kso_film_iterator), next(kso_ccd_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     #

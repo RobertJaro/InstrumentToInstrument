@@ -13,10 +13,10 @@ from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset, SOHODataset, StorageDataset
 from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback, NormScheduler, ValidationHistoryCallback
+    SaveCallback, ValidationHistoryCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/soho_sdo_v23"
+base_dir = "/gss/r.jarolim/iti/soho_sdo_v24"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -36,27 +36,28 @@ trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-sdo_dataset = SDODataset("/gss/r.jarolim/data/ch_detection", patch_shape=(1024, 1024))
-sdo_dataset = StorageDataset(sdo_dataset,
-                             '/gss/r.jarolim/data/converted/sdo_train',
-                             ext_editors=[RandomPatchEditor((256, 256))])
+sdo_train = SDODataset("/gss/r.jarolim/data/ch_detection", patch_shape=(1024, 1024), resolution=2048)
+sdo_train = StorageDataset(sdo_train, '/gss/r.jarolim/data/converted/sdo_2048_train',
+                           ext_editors=[RandomPatchEditor((256, 256))])
 
-soho_dataset = StorageDataset(SOHODataset("/gss/r.jarolim/data/soho/train"),
-                              '/gss/r.jarolim/data/converted/soho_train',
-                              ext_editors=[RandomPatchEditor((128, 128))])
+soho_train = SOHODataset("/gss/r.jarolim/data/soho/train", resolution=1024)
+soho_train = StorageDataset(soho_train, '/gss/r.jarolim/data/converted/soho_train',
+                            ext_editors=[RandomPatchEditor((128, 128))])
 
-sdo_valid = SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(256, 256))
-soho_valid = SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(128, 128))
+sdo_valid = SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(1024, 1024), resolution=2048)
+sdo_valid = StorageDataset(sdo_valid, '/gss/r.jarolim/data/converted/sdo_2048_valid',
+                           ext_editors=[RandomPatchEditor((256, 256))])
 
-sdo_iterator = loop(DataLoader(sdo_dataset, batch_size=1, shuffle=True, num_workers=8))
-soho_iterator = loop(DataLoader(soho_dataset, batch_size=1, shuffle=True, num_workers=8))
+soho_valid = SOHODataset("/gss/r.jarolim/data/soho/valid", resolution=1024)
+soho_valid = StorageDataset(soho_valid, '/gss/r.jarolim/data/converted/soho_valid',
+                                    ext_editors=[RandomPatchEditor((128, 128))])
+
+sdo_iterator = loop(DataLoader(sdo_train, batch_size=1, shuffle=True, num_workers=8))
+soho_iterator = loop(DataLoader(soho_train, batch_size=1, shuffle=True, num_workers=8))
 
 # Init Plot Callbacks
 history = HistoryCallback(trainer, base_dir)
-validation = ValidationHistoryCallback(trainer,
-                                       StorageDataset(soho_valid, '/gss/r.jarolim/data/converted/soho_valid'),
-                                       StorageDataset(sdo_valid, '/gss/r.jarolim/data/converted/sdo_valid'),
-                                       base_dir, log_iteration)
+validation = ValidationHistoryCallback(trainer, soho_valid, sdo_valid, base_dir, log_iteration)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
 
@@ -75,21 +76,22 @@ plot_settings_B = [
     {"cmap": "gray", "title": "HMI Magnetogram", 'vmin': -1, 'vmax': 1},
 ]
 
+soho_plot = SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024))
+sdo_plot = SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(2048, 2048))
+
 bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
 aba_callback = PlotABA(soho_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-full_disc_aba_callback = PlotABA(SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024)).sample(1),
-                                 trainer,
-                                 prediction_dir, log_iteration=log_iteration,
+full_disc_aba_callback = PlotABA(soho_plot.sample(4),
+                                 trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
                                  plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
                                  plot_id='full_disc_aba')
 
-full_disc_bab_callback = PlotBAB(SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(2048, 2048)).sample(1),
-                                 trainer,
-                                 prediction_dir, log_iteration=log_iteration,
+full_disc_bab_callback = PlotBAB(sdo_plot.sample(4),
+                                 trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
                                  plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
                                  plot_id='full_disc_bab')
 
@@ -101,8 +103,9 @@ callbacks = [save, history, progress, bab_callback, aba_callback, v_callback, fu
 
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 250000:
-        trainer.eval()  # fix running stats
+    if it > 300000:
+        trainer.gen_ab.eval()  # fix running stats
+        trainer.gen_ba.eval()  # fix running stats
     #
     x_a, x_b = next(soho_iterator), next(sdo_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()

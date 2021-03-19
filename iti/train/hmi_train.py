@@ -62,6 +62,9 @@ hinode_dataset = StorageDataset(HinodeDataset(hinode_files),
 hmi_iterator = loop(DataLoader(hmi_dataset, batch_size=1, shuffle=True, num_workers=8))
 hinode_iterator = loop(DataLoader(hinode_dataset, batch_size=1, shuffle=True, num_workers=8))
 
+logging.info("Using {} HMI samples".format(len(hmi_dataset)))
+logging.info("Using {} Hinode samples".format(len(hinode_dataset)))
+
 # Init Callbacks
 history = HistoryCallback(trainer, base_dir)
 progress = ProgressCallback(trainer)
@@ -92,7 +95,8 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
 # Start training
 for it in range(start_it, int(1e8)):
     if it > 250000:
-        trainer.eval()  # fix running stats
+        trainer.gen_ab.eval()  # fix running stats
+        trainer.gen_ba.eval()  # fix running stats
     x_a, x_b = next(hmi_iterator), next(hinode_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     #
