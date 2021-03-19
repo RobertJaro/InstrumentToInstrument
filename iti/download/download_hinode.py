@@ -3,7 +3,9 @@ from datetime import timedelta, datetime
 import numpy as np
 from dateutil.parser import parse
 
-with open('hinode_ca.sh') as f:
+file_name = 'hinode_gband'
+
+with open('%s.sh' % file_name) as f:
     lines = np.array(f.readlines())
 
 lines = np.array([l for l in lines if 'FGFOCUS' not in l])
@@ -14,5 +16,5 @@ date_diff = np.diff(dates, append=datetime.now())
 
 new_lines = np.concatenate([new_lines, lines[2:][date_diff > timedelta(minutes=30)]])
 
-with open('filtered_hinode_ca.sh', 'w') as f:
+with open('filtered_%s.sh' % file_name, 'w') as f:
     f.writelines(new_lines)
