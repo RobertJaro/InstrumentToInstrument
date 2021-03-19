@@ -3,11 +3,13 @@ import glob
 import logging
 import os
 import random
+from collections import Iterable
 from enum import Enum
-from typing import List
+from typing import List, Union
 
 import numpy as np
-from astropy.visualization import ImageNormalize, LinearStretch
+from astropy.visualization import AsinhStretch
+from dateutil.parser import parse
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -15,10 +17,9 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     MapToDataEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
-    PassEditor, BrightestPixelPatchEditor, secchi_norms, LimbDarkeningCorrectionEditor, ContrastNormalizeEditor, \
-    hinode_norm
+    PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, ContrastNormalizeEditor, \
+    hinode_norms, gregor_norms, LoadGregorGBandEditor, DistributeEditor
 
-from astropy import units as u
 
 class Norm(Enum):
     CONTRAST = 'contrast'
@@ -29,18 +30,22 @@ class Norm(Enum):
 
 class BaseDataset(Dataset):
 
-    def __init__(self, data, editors: List[Editor]):
+    def __init__(self, data: Union[str, list], editors: List[Editor], ext: str = None, **kwargs):
+        if isinstance(data, str):
+            pattern = '*' if ext is None else '*' + ext
+            data = sorted(glob.glob(os.path.join(data, "**", pattern), recursive=True))
+        assert isinstance(data, Iterable), 'Dataset requires list of samples or path to files!'
         self.data = data
         self.editors = editors
 
-        logging.info("Using {} samples".format(len(self.data)))
         super().__init__()
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.convertData(self.data[idx])
+        data, _ = self.getIndex(idx)
+        return data
 
     def sample(self, n_samples):
         it = DataLoader(self, batch_size=1, shuffle=True, num_workers=4).__iter__()
@@ -54,11 +59,18 @@ class BaseDataset(Dataset):
         del it
         return np.array(samples)
 
+    def getIndex(self, idx):
+        try:
+            return self.convertData(self.data[idx])
+        except Exception as ex:
+            logging.error('Unable to convert %s: %s' % (self.data[idx], ex))
+            raise ex
+
     def convertData(self, data):
         kwargs = {}
         for editor in self.editors:
             data, kwargs = editor.convert(data, **kwargs)
-        return data
+        return data, kwargs
 
     def addEditor(self, editor):
         self.editors.append(editor)
@@ -96,30 +108,34 @@ class StorageDataset(Dataset):
         samples = []
         while len(samples) < n_samples:
             try:
-                samples.append(next(it).detach().numpy()[0])
+                samples.append(next(it).detach().numpy())
             except Exception as ex:
                 logging.error(str(ex))
                 continue
         del it
-        return np.array(samples)
+        return np.concatenate(samples)
 
     def convert(self, n_worker):
         it = DataLoader(self, batch_size=1, shuffle=False, num_workers=n_worker).__iter__()
-        for _ in tqdm(range(len(self.dataset))):
+        for i in tqdm(range(len(self.dataset))):
             try:
                 next(it)
                 gc.collect()
             except StopIteration:
                 return
             except Exception as ex:
+                logging.error('Invalid data: %s' % self.dataset.data[i])
                 logging.error(str(ex))
                 continue
 
 
 class KSODataset(BaseDataset):
 
-    def __init__(self, path, resolution=256, ext="*.fts.gz", limit=None):
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+    def __init__(self, data: Union[str, list], resolution=256, ext="*.fts.gz", limit=None):
+        if isinstance(data, str) and os.path.isdir(data):
+            map_paths = sorted(glob.glob(os.path.join(data, "**", ext), recursive=True))
+        else:
+            map_paths = data
         if limit:
             map_paths = random.sample(map_paths, limit)
 
@@ -130,6 +146,7 @@ class KSODataset(BaseDataset):
                    ImageNormalizeEditor(0, 1000),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
+
 
 class KSOFlatDataset(BaseDataset):
 
@@ -144,7 +161,7 @@ class KSOFlatDataset(BaseDataset):
                    LimbDarkeningCorrectionEditor(),
                    MapToDataEditor(),
                    ContrastNormalizeEditor(),
-                   ImageNormalizeEditor(-5, 5),
+                   ImageNormalizeEditor(-4, 17, stretch=AsinhStretch(0.1)),
                    NanEditor(-1),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -163,7 +180,7 @@ class KSOFilmDataset(BaseDataset):
                    LimbDarkeningCorrectionEditor(),
                    MapToDataEditor(),
                    ContrastNormalizeEditor(),
-                   ImageNormalizeEditor(-5, 5),
+                   ImageNormalizeEditor(-4, 17, stretch=AsinhStretch(0.1)),
                    NanEditor(-1),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(map_paths, editors=editors)
@@ -171,17 +188,20 @@ class KSOFilmDataset(BaseDataset):
 
 class SDODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, base_names=None, **kwargs):
+    def __init__(self, path, patch_shape=None, base_names=None, months=None, **kwargs):
         data_sets = [AIADataset(os.path.join(path, '171'), 171, **kwargs),
                      AIADataset(os.path.join(path, '193'), 193, **kwargs),
                      AIADataset(os.path.join(path, '211'), 211, **kwargs),
                      AIADataset(os.path.join(path, '304'), 304, **kwargs),
                      HMIDataset(os.path.join(path, '6173'), 'mag', **kwargs)
                      ]
+        self.data_sets = data_sets
         # align data in time
         if base_names is None:
             base_names = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
             base_names = set(base_names[0]).intersection(*base_names)
+        if months:
+            base_names = [bn for bn in base_names if parse(bn.replace(kwargs.get('ext', '.fits'), '')).month in months]
         for data_set in data_sets:
             data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in base_names])
 
@@ -193,21 +213,26 @@ class SDODataset(BaseDataset):
 
 class SOHODataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, base_names=None, **kwargs):
-        data_sets = [EITDataset(os.path.join(path, 'eit_171'), 171, **kwargs),
-                     EITDataset(os.path.join(path, 'eit_195'), 195, **kwargs),
-                     EITDataset(os.path.join(path, 'eit_284'), 284, **kwargs),
-                     EITDataset(os.path.join(path, 'eit_304'), 304, **kwargs),
-                     MDIDataset(os.path.join(path, 'mdi_mag'), **kwargs)
+    def __init__(self, path, patch_shape=None, base_names=None, ext='.fits', **kwargs):
+        dirs = [
+            'eit_171',
+            'eit_195',
+            'eit_284',
+            'eit_304',
+            'mdi_mag',
+        ]
+        instrument_files = [glob.glob(os.path.join(path, dir, '*' + ext)) for dir in dirs]
+        if base_names is None:
+            base_names = [[os.path.basename(file) for file in files] for files in instrument_files]
+            base_names = sorted(list(set(base_names[0]).intersection(*base_names)))
+        instrument_files = [[os.path.join(path, dir, bn) for bn in base_names] for dir in dirs]
+        data_sets = [EITDataset(instrument_files[0], 171, **kwargs),
+                     EITDataset(instrument_files[1], 195, **kwargs),
+                     EITDataset(instrument_files[2], 284, **kwargs),
+                     EITDataset(instrument_files[3], 304, **kwargs),
+                     MDIDataset(instrument_files[4], **kwargs)
                      ]
         self.data_sets = data_sets
-        # align data in time
-        if base_names is None:
-            base_names = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
-            base_names = set(base_names[0]).intersection(*base_names)
-        for data_set in data_sets:
-            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in base_names])
-
         editors = [StackEditor(data_sets)]
         if patch_shape is not None:
             editors.append(BrightestPixelPatchEditor(patch_shape))
@@ -251,11 +276,32 @@ class STEREOMagnetogramDataset(BaseDataset):
         super().__init__(range(len(data_sets[0])), editors)
 
 
+class GregorDataset(BaseDataset):
+
+    def __init__(self, path, ext='.fts', **kwargs):
+        map_paths = sorted(glob.glob(os.path.join(path, "**", '*' + ext), recursive=True)) if isinstance(path,
+                                                                                                         str) else path
+        norm = gregor_norms['gband']
+
+        sub_editors = [MapToDataEditor(),
+                       NanEditor(),
+                       NormalizeEditor(norm),
+                       ExpandDimsEditor()]
+        editors = [LoadGregorGBandEditor(), DistributeEditor(sub_editors)]
+
+        super().__init__(map_paths, editors)
+
+
 class EITDataset(BaseDataset):
 
-    def __init__(self, path, wavelength, resolution=1024, ext='*.fits'):
+    def __init__(self, data, wavelength, resolution=1024, ext='.fits'):
         norm = soho_norms[wavelength]
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+        if isinstance(data, str):
+            map_paths = sorted(glob.glob(os.path.join(data, "**", '*' + ext), recursive=True))
+        elif isinstance(data, list):
+            map_paths = data
+        else:
+            raise Exception('Unsupported data type: %s' % type(data))
 
         editors = [LoadMapEditor(),
                    EITCheckEditor(),
@@ -268,9 +314,14 @@ class EITDataset(BaseDataset):
 
 class MDIDataset(BaseDataset):
 
-    def __init__(self, path, resolution=1024, ext='*.fits'):
+    def __init__(self, data, resolution=1024, ext='.fits'):
         norm = soho_norms[6173]
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+        if isinstance(data, str):
+            map_paths = sorted(glob.glob(os.path.join(data, "**", '*' + ext), recursive=True))
+        elif isinstance(data, list):
+            map_paths = data
+        else:
+            raise Exception('Unsupported data type: %s' % type(data))
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
@@ -284,9 +335,9 @@ class MDIDataset(BaseDataset):
 
 class AIADataset(BaseDataset):
 
-    def __init__(self, path, wavelength, resolution=2048, ext='*.fits'):
+    def __init__(self, path, wavelength, resolution=2048, ext='.fits'):
         norm = sdo_norms[wavelength]
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
+        map_paths = sorted(glob.glob(os.path.join(path, "**", '*' + ext), recursive=True))
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
@@ -299,9 +350,8 @@ class AIADataset(BaseDataset):
 
 class HMIDataset(BaseDataset):
 
-    def __init__(self, path, id, resolution=2048, ext='*.fits'):
+    def __init__(self, path, id, resolution=2048, **kwargs):
         norm = sdo_norms[id]
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
@@ -310,14 +360,13 @@ class HMIDataset(BaseDataset):
                    NanEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(map_paths, editors=editors)
+        super().__init__(path, editors=editors, **kwargs)
 
 
 class HMIContinuumDataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, ext='*.fits', **kwargs):
+    def __init__(self, path, patch_shape=None, **kwargs):
         norm = sdo_norms['continuum']
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True)) if not isinstance(path, list) else path
 
         editors = [LoadMapEditor(),
                    ScaleEditor(0.6),
@@ -326,29 +375,28 @@ class HMIContinuumDataset(BaseDataset):
                    NanEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
-        super().__init__(map_paths, editors=editors, **kwargs)
+        super().__init__(path, editors=editors, **kwargs)
 
 
 class HinodeDataset(BaseDataset):
 
-    def __init__(self, path, ext='*.fits'):
-        norm = hinode_norm['continuum']
-        map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True)) if isinstance(path, str) else path
+    def __init__(self, path, scale=0.15, wavelength='continuum', **kwargs):
+        norm = hinode_norms[wavelength]
 
         editors = [LoadMapEditor(),
-                   ScaleEditor(0.15),
+                   ScaleEditor(scale),
                    NormalizeExposureEditor(),
                    MapToDataEditor(),
                    NanEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
-        super().__init__(map_paths, editors=editors)
+        super().__init__(path, editors=editors, **kwargs)
 
 
 class SECCHIDataset(BaseDataset):
 
     def __init__(self, path, wavelength, resolution=1024, ext='*.fits'):
-        norm = secchi_norms[wavelength]
+        norm = stereo_norms[wavelength]
         map_paths = sorted(glob.glob(os.path.join(path, "**", ext), recursive=True))
 
         editors = [LoadMapEditor(),

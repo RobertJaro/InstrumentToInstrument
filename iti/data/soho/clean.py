@@ -5,10 +5,10 @@ from astropy.io.fits import getheader, getdata
 import numpy as np
 from tqdm import tqdm
 
+from matplotlib import pyplot as plt
+
 def clean(path):
     files = glob.glob(path)
-    mins = []
-    maxs = []
     for f in tqdm(files):
         data = getdata(f)
         header = getheader(f)
@@ -19,29 +19,51 @@ def clean(path):
             continue
         #print('valid')
 
+def getLightCurve(path):
+    sums = []
+    files = sorted(glob.glob(path))
+    for f in tqdm(files):
+        data = getdata(f)
+        sums += [(np.nanmean(data), f)]
+    return np.array(sums)
+
 def clean_mdi(path):
     files = glob.glob(path)
     for f in tqdm(files):
         data = getdata(f)
         header = getheader(f)
-        if data.shape != (1024, 1024):
+        if data.shape != (1024, 1024) or header['DPC_OBSR'] == 'FD_Continuum' or header['DPC_OBSR'] == 'FD_Doppler':
             print(data.shape)
+            print(header['DPC_OBSR'], f)
             #os.remove(f)
             continue
         #print('valid')
 
-# clean('/gss/r.jarolim/data/soho/train/eit_171/*.fits')
-# clean('/gss/r.jarolim/data/soho/train/eit_195/*.fits')
-# clean('/gss/r.jarolim/data/soho/train/eit_284/*.fits')
-clean('/gss/r.jarolim/data/soho/train/eit_304/*.fits')
-# clean_mdi('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits')
+#clean('/gss/r.jarolim/data/soho/train/eit_171/*.fits')
+#clean('/gss/r.jarolim/data/soho/train/eit_195/*.fits')
+#clean('/gss/r.jarolim/data/soho/train/eit_284/*.fits')
+#clean('/gss/r.jarolim/data/soho/train/eit_304/*.fits')
+#clean_mdi('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits')
 
-lists = [glob.glob('/gss/r.jarolim/data/soho/train/eit_171/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/train/eit_195/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/train/eit_284/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/train/eit_304/*.fits'),
-         glob.glob('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits'),]
-joined_files = set.intersection(*map(set,[[os.path.basename(f) for f in files] for files in lists]))
+light_curve = getLightCurve('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits')
+plt.scatter(range(len(light_curve)), light_curve[:, 0].astype(np.float))
+plt.savefig('/gss/r.jarolim/data/converted/iti_samples/soho_lc_mag.jpg')
+plt.close()
+
+invalid_files = light_curve[:, 1][np.abs(light_curve[:, 0].astype(np.float)) > 10]
+
+invalid_file_path = '/gss/r.jarolim/data/soho/train/mdi_mag/2003-01-08T01:19.fits'
+plt.imshow(getdata(invalid_file_path), cmap='gray', vmin=-100, vmax=100)
+print(np.nanmean(getdata(invalid_file_path)))
+plt.savefig('/gss/r.jarolim/data/converted/iti_samples/invalid_mag.jpg')
+plt.close()
+
+# lists = [glob.glob('/gss/r.jarolim/data/soho/train/eit_171/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho/train/eit_195/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho/train/eit_284/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho/train/eit_304/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits'),]
+# joined_files = set.intersection(*map(set,[[os.path.basename(f) for f in files] for files in lists]))
 
 
 

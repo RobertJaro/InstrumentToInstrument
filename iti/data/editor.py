@@ -39,34 +39,36 @@ class Editor(ABC):
         raise NotImplementedError()
 
 
-sdo_norms = {94: ImageNormalize(vmin=0, vmax=411, stretch=AsinhStretch(0.005), clip=True),
-             131: ImageNormalize(vmin=0, vmax=1268, stretch=AsinhStretch(0.005), clip=True),
-             171: ImageNormalize(vmin=0, vmax=6463, stretch=AsinhStretch(0.005), clip=True),
-             193: ImageNormalize(vmin=0, vmax=8392, stretch=AsinhStretch(0.005), clip=True),
-             211: ImageNormalize(vmin=0, vmax=4184, stretch=AsinhStretch(0.005), clip=True),
-             304: ImageNormalize(vmin=0, vmax=6481, stretch=AsinhStretch(0.005), clip=True),
-             335: ImageNormalize(vmin=0, vmax=637, stretch=AsinhStretch(0.005), clip=True),
+sdo_norms = {94: ImageNormalize(vmin=0, vmax=340, stretch=AsinhStretch(0.005), clip=True),
+             131: ImageNormalize(vmin=0, vmax=1400, stretch=AsinhStretch(0.005), clip=True),
+             171: ImageNormalize(vmin=0, vmax=8600, stretch=AsinhStretch(0.005), clip=True),
+             193: ImageNormalize(vmin=0, vmax=9800, stretch=AsinhStretch(0.005), clip=True),
+             211: ImageNormalize(vmin=0, vmax=5800, stretch=AsinhStretch(0.005), clip=True),
+             304: ImageNormalize(vmin=0, vmax=8800, stretch=AsinhStretch(0.001), clip=True),
+             335: ImageNormalize(vmin=0, vmax=600, stretch=AsinhStretch(0.005), clip=True),
              1600: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
              1700: ImageNormalize(vmin=0, vmax=4000, stretch=AsinhStretch(0.005), clip=True),  # TODO
              'mag': ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
              'continuum': ImageNormalize(vmin=0, vmax=70000, stretch=LinearStretch(), clip=True),
              }
 
-soho_norms = {171: ImageNormalize(vmin=0, vmax=10394, stretch=AsinhStretch(0.005), clip=True),
-              195: ImageNormalize(vmin=0, vmax=7609, stretch=AsinhStretch(0.005), clip=True),
-              284: ImageNormalize(vmin=0, vmax=1772, stretch=AsinhStretch(0.005), clip=True),
-              304: ImageNormalize(vmin=0, vmax=8252, stretch=AsinhStretch(0.005), clip=True),
+soho_norms = {171: ImageNormalize(vmin=0, vmax=16000, stretch=AsinhStretch(0.005), clip=True),
+              195: ImageNormalize(vmin=0, vmax=12000, stretch=AsinhStretch(0.005), clip=True),
+              284: ImageNormalize(vmin=0, vmax=2300, stretch=AsinhStretch(0.005), clip=True),
+              304: ImageNormalize(vmin=0, vmax=11000, stretch=AsinhStretch(0.005), clip=True),
               6173: ImageNormalize(vmin=-1000, vmax=1000, stretch=LinearStretch(), clip=True),
               }
 
-secchi_norms = {171: ImageNormalize(vmin=0, vmax=11523, stretch=AsinhStretch(0.005), clip=True),
-                195: ImageNormalize(vmin=0, vmax=6768, stretch=AsinhStretch(0.005), clip=True),
-                284: ImageNormalize(vmin=0, vmax=1927, stretch=AsinhStretch(0.005), clip=True),
-                304: ImageNormalize(vmin=0, vmax=8378, stretch=AsinhStretch(0.005), clip=True),
+stereo_norms = {171: ImageNormalize(vmin=0, vmax=6000, stretch=AsinhStretch(0.005), clip=True),
+                195: ImageNormalize(vmin=0, vmax=3400, stretch=AsinhStretch(0.005), clip=True),
+                284: ImageNormalize(vmin=0, vmax=1300, stretch=AsinhStretch(0.005), clip=True),
+                304: ImageNormalize(vmin=0, vmax=18100, stretch=AsinhStretch(0.005), clip=True),
                 }
 
-hinode_norm = {'continuum': ImageNormalize(vmin=0, vmax=50000, stretch=LinearStretch(), clip=True)}
+hinode_norms = {'continuum': ImageNormalize(vmin=0, vmax=50000, stretch=LinearStretch(), clip=True),
+               'gband': ImageNormalize(vmin=0, vmax=25000, stretch=LinearStretch(), clip=True), }
 
+gregor_norms = {'gband': ImageNormalize(vmin=0, vmax=1.8, stretch=LinearStretch(), clip=True)}
 
 class LoadFITSEditor(Editor):
 
@@ -90,6 +92,31 @@ class LoadMapEditor(Editor):
             s_map = Map(data)
             return s_map, {'path': data}
 
+class LoadGregorGBandEditor(Editor):
+
+    def call(self, file, **kwargs):
+        warnings.simplefilter("ignore")
+        hdul = fits.open(file)
+        #
+        assert 'wavelnth' in hdul[0].header, 'Invalid GREGOR file %s' % file
+        if hdul[0].header['wavelnth'] == 430.7:
+            index = 0
+        elif hdul[1].header['wavelnth'] == 430.7:
+            index = 1
+        else:
+            raise Exception('Invalid GREGOR file %s' % file)
+        #
+        primary_header = hdul[0].header
+        primary_header['cunit1'] = 'arcsec'
+        primary_header['cunit2'] = 'arcsec'
+        primary_header['cdelt1'] = 70 / 1280
+        primary_header['cdelt2'] = 70 / 1280
+        #
+        g_band = hdul[index::2]
+        g_band = sorted(g_band, key=lambda hdu: hdu.header['TIMEOFFS'])
+        #
+        gregor_maps = [Map(hdu.data, primary_header) for hdu in g_band]
+        return gregor_maps, {'path': file}
 
 class SubMapEditor(Editor):
 
@@ -331,6 +358,18 @@ class StackEditor(Editor):
     def call(self, data, **kwargs):
         return np.concatenate([dp[data] for dp in self.data_sets], 0)
 
+class DistributeEditor(Editor):
+
+    def __init__(self, editors):
+        self.editors = editors
+
+    def call(self, data, **kwargs):
+        return np.concatenate([self.convertData(d, **kwargs) for d in data], 0)
+
+    def convertData(self, data, **kwargs):
+        for editor in self.editors:
+            data, kwargs = editor.convert(data, **kwargs)
+        return data
 
 class RemoveOffLimbEditor(Editor):
 
@@ -394,6 +433,21 @@ class RandomPatchEditor(Editor):
         assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
         return patch
 
+class RandomPatch3DEditor(Editor):
+    def __init__(self, patch_shape):
+        self.patch_shape = patch_shape
+
+    def call(self, data, **kwargs):
+        assert data.shape[0] >= self.patch_shape[0], 'Invalid data shape: %s' % str(data.shape)
+        assert data.shape[1] >= self.patch_shape[1], 'Invalid data shape: %s' % str(data.shape)
+        assert data.shape[2] >= self.patch_shape[2], 'Invalid data shape: %s' % str(data.shape)
+        c = randint(0, data.shape[0] - self.patch_shape[0])
+        x = randint(0, data.shape[1] - self.patch_shape[1])
+        y = randint(0, data.shape[2] - self.patch_shape[2])
+        patch = data[c:c+self.patch_shape[0], x:x + self.patch_shape[1], y:y + self.patch_shape[2]]
+        assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
+        return patch
+
 class SliceEditor(Editor):
 
     def __init__(self, start, stop):
@@ -438,12 +492,12 @@ class EITCheckEditor(Editor):
 
 
 class PaddingEditor(Editor):
-    def __init__(self, patch_shape):
-        self.patch_shape = patch_shape
+    def __init__(self, target_shape):
+        self.target_shape = target_shape
 
     def call(self, data, **kwargs):
         s = data.shape
-        p = self.patch_shape
+        p = self.target_shape
         x_pad = (p[0] - s[-2]) / 2
         y_pad = (p[1] - s[-1]) / 2
         pad = [(int(np.floor(x_pad)), int(np.ceil(x_pad))),
@@ -452,15 +506,36 @@ class PaddingEditor(Editor):
             pad.insert(0, (0, 0))
         return np.pad(data, pad, 'constant', constant_values=np.min(data))
 
+class UnpaddingEditor(Editor):
+    def __init__(self, target_shape):
+        self.target_shape = target_shape
+
+    def call(self, data, **kwargs):
+        s = data.shape
+        p = self.target_shape
+        x_unpad = (s[-2] - p[0]) / 2
+        y_unpad = (s[-1] - p[1]) / 2
+        unpad = [(int(np.floor(y_unpad)), int(np.ceil(y_unpad))),
+               (int(np.floor(x_unpad)), int(np.ceil(x_unpad)))]
+        print(unpad)
+        print(data.shape)
+        return data[:, unpad[0][0]:-unpad[0][1], unpad[1][0]:-unpad[1][1]]
+
 class ReductionEditor(Editor):
 
     def call(self, data, **kwargs):
         s = data.shape
         p = kwargs['patch_shape']
-        x_pad = (s[-2] - p[0]) / 2
-        y_pad = (s[-1] - p[1]) / 2
+        x_pad = (s[-2] - p[-2]) / 2
+        y_pad = (s[-1] - p[-1]) / 2
         pad = [(int(np.floor(x_pad)), int(np.ceil(x_pad))),
                (int(np.floor(y_pad)), int(np.ceil(y_pad)))]
+        if x_pad == 0 and y_pad == 0:
+            return data
+        if x_pad == 0:
+            return data[..., pad[1][0]:-pad[1][1]]
+        if y_pad == 0:
+            return data[..., pad[0][0]:-pad[0][1], :]
         return data[..., pad[0][0]:-pad[0][1], pad[1][0]:-pad[1][1]]
 
 
