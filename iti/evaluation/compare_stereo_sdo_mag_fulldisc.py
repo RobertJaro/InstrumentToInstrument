@@ -1,55 +1,44 @@
+import glob
 import os
+from datetime import timedelta, datetime
 
-from astropy.coordinates import SkyCoord
-from matplotlib.colors import Normalize
-from sunpy.map import Map
+from dateutil.parser import parse
+from sunpy.visualization.colormaps import cm
+from tqdm import tqdm
+
+from iti.prediction.translate import STEREOToSDOMagnetogram
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-import torch
 from matplotlib import pyplot as plt
-from skimage.io import imsave
-from sunpy.cm import cm
-from torch.utils.data import DataLoader
 
-from iti.data.dataset import SOHODataset, STEREODataset
-from iti.data.editor import PaddingEditor, LoadMapEditor, NormalizeRadiusEditor
-from iti.train.model import DiscriminatorMode
-from iti.train.trainer import Trainer
+from iti.data.dataset import SOHODataset
 
-from astropy import units as u
 import numpy as np
 
 stereo_shape = 256
-base_path = "/gss/r.jarolim/iti/stereo_mag_v5"
+base_path = "/gss/r.jarolim/iti/stereo_mag_v10"
+prediction_path = os.path.join(base_path, 'evaluation')
+os.makedirs(prediction_path, exist_ok=True)
 
-os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", base_names=['2007-01-01T05:03.fits'], resolution=256)
-loader = DataLoader(stereo_dataset, batch_size=1)
-iter = loader.__iter__()
+soho_basenames = np.array([os.path.basename(f) for f in sorted(glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/171/*.fits'))])
+soho_dates = np.array([parse(bn.split('.')[0]) for bn in soho_basenames])
+stereo_basenames = np.array(
+    [os.path.basename(f) for f in sorted(glob.glob('/gss/r.jarolim/data/stereo_iti2021_prep/171/*.fits'))])
+stereo_dates = np.array([parse(bn.split('.')[0]) for bn in stereo_basenames])
 
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", base_names=['2007-01-01T01:19.fits'], resolution=256)
+min_diff = np.array([np.min(np.abs(stereo_dates - soho_date)) for soho_date in soho_dates])
+# filter time diff
+cond = (min_diff < timedelta(hours=2)) & (soho_dates < datetime(2008, 1, 1))
+soho_dates = soho_dates[cond]
+soho_basenames = soho_basenames[cond]
+# select corresponding stereo files
+stereo_basenames = stereo_basenames[[np.argmin(np.abs(stereo_dates - soho_date)) for soho_date in soho_dates]]
 
-trainer = Trainer(4, 5, discriminator_mode=DiscriminatorMode.SINGLE,
-                  norm='in_aff')
-trainer.cuda()
-iteration = trainer.resume(base_path, epoch=60000)
+soho_dataset = SOHODataset("/gss/r.jarolim/data/soho_iti2021_prep", basenames=soho_basenames, resolution=1024)
+translator = STEREOToSDOMagnetogram(model_path=os.path.join(base_path, 'generator_AB.pt'))
 
-with torch.no_grad():
-    stereo_img = next(iter).float().cuda()
-    iti_img = trainer.forwardAB(stereo_img)
-    stereo_img = stereo_img.detach().cpu().numpy()
-    iti_img = iti_img.detach().cpu().numpy()
-    soho_img = np.array([soho_dataset[0]])
-
-soho_img[0, 4] = np.flip(np.flip(soho_img[0, 4], 0), 1)
-
-stereo_cmaps = [
-    cm.sdoaia171,
-    cm.sdoaia193,
-    cm.sdoaia211,
-    cm.sdoaia304
-]
+result = translator.translate("/gss/r.jarolim/data/stereo_iti2021_prep", basenames=stereo_basenames)
 
 sdo_cmaps = [
     cm.sdoaia171,
@@ -59,39 +48,41 @@ sdo_cmaps = [
     plt.get_cmap('gray')
 ]
 
-reference_map, _ = LoadMapEditor().call(stereo_dataset.data_sets[0].data[0])
-reference_map = NormalizeRadiusEditor(stereo_shape).call(reference_map)
+mean_mag_iti = []
+mean_mag_soho = []
+dates = []
 
-fig, axs = plt.subplots(3, 5, figsize=(20, 12), sharex=True, sharey=True)
+for date, (iti_maps, stereo_img, iti_img), soho_img in tqdm(zip(soho_dates, result, soho_dataset), total=len(stereo_basenames)):
+    fig, axs = plt.subplots(3, 5, figsize=(20, 12))
+    if abs(iti_maps[0].meta['hgln_obs']) > 5:
+        print(iti_maps[0].meta['hgln_obs'])
+        continue
+    for c in range(4):
+        axs[0, c].imshow(stereo_img[c], cmap=sdo_cmaps[c])
 
-for c in range(4):
-    s_map = Map(stereo_img[0, c], reference_map.meta)
-    title = 'STEREO' if c == 0 else ''
-    s_map.plot(axes=axs[0, c], cmap=stereo_cmaps[c], norm=Normalize(vmin=-1, vmax=1), title=title)
+    for c in range(4):
+        axs[1, c].imshow(iti_img[c], cmap=sdo_cmaps[c], vmin=-1, vmax=1)
 
-axs[0, 4].set_axis_off()
+    axs[1, 4].imshow(iti_img[4], cmap=sdo_cmaps[4], vmin=-1, vmax=1)
 
-reference_map = reference_map.resample(iti_img.shape[2:] * u.pix)
-for c in range(5):
-    s_map = Map(iti_img[0, c], reference_map.meta)
-    norm = Normalize(vmin=-1, vmax=1)
-    title = 'ITI' if c == 0 else ''
-    s_map.plot(axes=axs[1, c], cmap=sdo_cmaps[c], norm=norm, title=title)
+    for c in range(4):
+        axs[2, c].imshow(soho_img[c], cmap=sdo_cmaps[c], vmin=-1, vmax=1)
 
-reference_map = reference_map.resample(soho_img.shape[2:] * u.pix)
-for c in range(5):
-    s_map = Map(soho_img[0, c], reference_map.meta)
-    norm = Normalize(vmin=-.1, vmax=.1) if c == 4 else Normalize(vmin=-1, vmax=1)
-    title = 'SOHO' if c == 0 else ''
-    s_map.plot(axes=axs[2, c], cmap=sdo_cmaps[c], norm=norm, title=title)
+    axs[2, 4].imshow(np.abs(soho_img[4]), cmap=sdo_cmaps[4], vmin=0, vmax=1)
 
-[(ax.set_xlabel(None), ax.set_ylabel(None)) for ax in np.ravel(axs)]
-fontsize = 13
-axs[0,0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-axs[1,0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-axs[2,0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-[ax.set_xlabel('Helioprojective longitude [arcsec]', fontsize=fontsize) for ax in axs[2]]
+    [ax.set_axis_off() for ax in np.ravel(axs)]
 
-plt.tight_layout(0.1)
-plt.savefig(os.path.join(base_path, 'evaluation/20070101_%06d.jpg' % iteration), dpi=300)
-plt.close()
+    plt.tight_layout(0.1)
+    plt.savefig(os.path.join(base_path, 'evaluation/%s.jpg' % date.isoformat('T')), dpi=300)
+    plt.close()
+
+    dates.append(date)
+    mean_mag_iti.append(((iti_img[4] + 1) / 2).mean() * 1000)
+    mean_mag_soho.append(np.abs(soho_img[4]).mean() * 1000)
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(dates, mean_mag_iti, '-o', label='ITI')
+    plt.plot(dates, mean_mag_soho, '-o', label='SOHO')
+    plt.legend()
+    plt.savefig(os.path.join(base_path, 'evaluation/mag_comparison.jpg'), dpi=300)
+    plt.close()

@@ -2,7 +2,7 @@ import os
 import random
 
 from matplotlib import pyplot as plt
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 
 from iti.data.dataset import SECCHIDataset, EITDataset, AIADataset, SDODataset
 

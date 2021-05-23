@@ -1,16 +1,14 @@
 import logging
 import os
-import pickle
 from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.train.trainer import Trainer, loop
+from iti.train.trainer import Trainer
 
 
 class Callback(ABC):
@@ -29,13 +27,14 @@ class Callback(ABC):
 
 class BasicPlot(Callback):
 
-    def __init__(self, data, model: Trainer, path, plot_id, plot_settings, dpi=100, **kwargs):
+    def __init__(self, data, model: Trainer, path, plot_id, plot_settings, dpi=100, batch_size=None, **kwargs):
         self.data = data
         self.path = path
         self.model = model
         self.plot_settings = plot_settings
         self.dpi = dpi
         self.plot_id = plot_id
+        self.batch_size = batch_size if batch_size is not None else len(data)
 
         super().__init__(**kwargs)
 
@@ -62,10 +61,19 @@ class BasicPlot(Callback):
 
     def loadData(self):
         with torch.no_grad():
-            data = torch.from_numpy(self.data).float().cuda().detach()
-            prediction = self.predict(data)
-            batch_data = [data, ] + [*prediction]
-            return [[d[j, i].cpu().detach().numpy() for d in batch_data for i in range(d.shape[1])] for j in
+            loader = DataLoader(self.data, batch_size=self.batch_size, shuffle=False)
+            data, predictions = [], []
+            for data_batch in loader:
+                data_batch = data_batch.float().cuda()
+                predictions_batch = self.predict(data_batch)
+                data += [data_batch.detach().cpu().numpy()]
+                predictions += [[pred.detach().cpu().numpy() for pred in predictions_batch]]
+            data = np.concatenate(data)
+            predictions = map(list, zip(*predictions)) # transpose
+            predictions = [np.concatenate(p) for p in predictions]
+            samples = [data, ] + [*predictions]
+            # separate into rows and columns
+            return [[d[j, i] for d in samples for i in range(d.shape[1])] for j in
                     range(len(self.data))]
 
     def predict(self, input_data):
@@ -160,30 +168,12 @@ class HistoryCallback(Callback):
     def __init__(self, trainer: Trainer, path, log_iteration=1):
         self.trainer = trainer
         self.path = path
-        self.history_path = os.path.join(path, 'history.pickle')
 
-        self.loss = {'loss_gen_a_identity': [],
-                     'loss_gen_b_identity': [],
-                     'loss_gen_a_translate': [],
-                     'loss_gen_b_translate': [],
-                     'loss_gen_adv_a': [],
-                     'loss_gen_adv_b': [],
-                     'loss_gen_a_content': [],
-                     'loss_gen_b_content': [],
-                     'loss_gen_a_identity_content': [],
-                     'loss_gen_b_identity_content': [],
-                     'loss_gen_aba_noise': [],
-                     'loss_gen_a_identity_noise': [],
-                     'loss_dis_a': [],
-                     'loss_dis_b': [],
-                     'loss_gen_diversity': []
-                     }
-        if os.path.exists(self.history_path):
-            with open(self.history_path, 'rb') as f:
-                self.loss = pickle.load(f)
+        self.loss = self.trainer.train_loss
         super().__init__(log_iteration)
 
     def call(self, iteration, **kwargs):
+        self.loss['iteration'] += [iteration]
         self.loss['loss_gen_a_identity'] += [self.trainer.loss_gen_a_identity.cpu().detach().numpy()]
         self.loss['loss_gen_b_identity'] += [self.trainer.loss_gen_b_identity.cpu().detach().numpy()]
         self.loss['loss_gen_a_translate'] += [self.trainer.loss_gen_a_translate.cpu().detach().numpy()]
@@ -204,15 +194,13 @@ class HistoryCallback(Callback):
             self.plotContent()
             self.plotDistortion()
             self.plotNoise()
-            with open(self.history_path, 'wb') as f:
-                pickle.dump(self.loss, f)
 
     def plotAdversarial(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(running_mean(self.loss['loss_gen_adv_a']), label='Generator A')
-        plt.plot(running_mean(self.loss['loss_gen_adv_b']), label='Generator B')
-        plt.plot(running_mean(self.loss['loss_dis_a']), label='Discriminator A')
-        plt.plot(running_mean(self.loss['loss_dis_b']), label='Discriminator B')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_adv_a']), label='Generator A')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_adv_b']), label='Generator B')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_dis_a']), label='Discriminator A')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_dis_b']), label='Discriminator B')
         plt.ylim((0, 0.9))
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_adversarial.jpg"), dpi=100)
@@ -220,29 +208,29 @@ class HistoryCallback(Callback):
 
     def plotContent(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(running_mean(self.loss['loss_gen_a_content']), label='Content A')
-        plt.plot(running_mean(self.loss['loss_gen_b_content']), label='Content B')
-        plt.plot(running_mean(self.loss['loss_gen_a_identity_content']), label='Content A Identity')
-        plt.plot(running_mean(self.loss['loss_gen_b_identity_content']), label='Content B Identity')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_a_content']), label='Content A')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_b_content']), label='Content B')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_a_identity_content']), label='Content A Identity')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_b_identity_content']), label='Content B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_content.jpg"), dpi=100)
         plt.close()
 
     def plotNoise(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(running_mean(self.loss['loss_gen_a_identity_noise']), label='Noise A Identity')
-        plt.plot(running_mean(self.loss['loss_gen_aba_noise']), label='Noise ABA')
-        plt.plot(running_mean(self.loss['loss_gen_diversity']), label='Diversity')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_a_identity_noise']), label='Noise A Identity')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_aba_noise']), label='Noise ABA')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_diversity']), label='Diversity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_noise.jpg"), dpi=100)
         plt.close()
 
     def plotDistortion(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(running_mean(self.loss['loss_gen_a_translate']), label='MAE A')
-        plt.plot(running_mean(self.loss['loss_gen_b_translate']), label='MAE B')
-        plt.plot(running_mean(self.loss['loss_gen_a_identity_content']), label='MAE A Identity')
-        plt.plot(running_mean(self.loss['loss_gen_b_identity_content']), label='MAE B Identity')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_a_translate']), label='MAE A')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_b_translate']), label='MAE B')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_a_identity_content']), label='MAE A Identity')
+        plt.plot(self.loss['iteration'][25:-24], running_mean(self.loss['loss_gen_b_identity_content']), label='MAE B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "progress_distortion.jpg"), dpi=100)
         plt.close()
@@ -251,29 +239,10 @@ class ValidationHistoryCallback(Callback):
     def __init__(self, trainer: Trainer, data_set_A, data_set_B, path, log_iteration=1000):
         self.trainer = trainer
         self.path = path
-        self.history_path = os.path.join(path, 'valid_history.pickle')
         self.data_set_A = data_set_A
         self.data_set_B = data_set_B
 
-        self.loss = {'loss_gen_a_identity': [],
-                     'loss_gen_b_identity': [],
-                     'loss_gen_a_translate': [],
-                     'loss_gen_b_translate': [],
-                     'loss_gen_adv_a': [],
-                     'loss_gen_adv_b': [],
-                     'loss_gen_a_content': [],
-                     'loss_gen_b_content': [],
-                     'loss_gen_a_identity_content': [],
-                     'loss_gen_b_identity_content': [],
-                     'loss_gen_aba_noise': [],
-                     'loss_gen_a_identity_noise': [],
-                     'loss_dis_a': [],
-                     'loss_dis_b': [],
-                     'loss_gen_diversity': []
-                     }
-        if os.path.exists(self.history_path):
-            with open(self.history_path, 'rb') as f:
-                self.loss = pickle.load(f)
+        self.loss = self.trainer.valid_loss
         super().__init__(log_iteration)
 
     def call(self, iteration, **kwargs):
@@ -291,11 +260,10 @@ class ValidationHistoryCallback(Callback):
                 'loss_gen_a_identity_noise': [],
                 'loss_dis_a': [],
                 'loss_dis_b': [],
-                'loss_gen_diversity': []
                 }
         dl_A, dl_B = DataLoader(self.data_set_A, batch_size=2, shuffle=False, num_workers=4),\
                      DataLoader(self.data_set_B, batch_size=2, shuffle=False, num_workers=4)
-        for x_a, x_b in tqdm(zip(dl_A, dl_B)):
+        for x_a, x_b in tqdm(zip(dl_A, dl_B), desc='Validation', total=len(dl_A)):
             x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
             self.trainer.validate(x_a, x_b)
             loss['loss_gen_a_identity'] += [self.trainer.valid_loss_gen_a_identity.cpu().detach().numpy()]
@@ -313,6 +281,7 @@ class ValidationHistoryCallback(Callback):
             loss['loss_dis_a'] += [self.trainer.valid_loss_dis_a.cpu().detach().numpy()]
             loss['loss_dis_b'] += [self.trainer.valid_loss_dis_b.cpu().detach().numpy()]
 
+        self.loss['iteration'] += [iteration]
         self.loss['loss_gen_a_identity'].append(np.mean(loss['loss_gen_a_identity']))
         self.loss['loss_gen_b_identity'].append(np.mean(loss['loss_gen_b_identity']))
         self.loss['loss_gen_a_translate'].append(np.mean(loss['loss_gen_a_translate']))
@@ -333,44 +302,41 @@ class ValidationHistoryCallback(Callback):
         self.plotContent()
         self.plotDistortion()
         self.plotNoise()
-        with open(self.history_path, 'wb') as f:
-            pickle.dump(self.loss, f)
 
     def plotAdversarial(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_adv_a'], label='Generator A')
-        plt.plot(self.loss['loss_gen_adv_b'], label='Generator B')
-        plt.plot(self.loss['loss_dis_a'], label='Discriminator A')
-        plt.plot(self.loss['loss_dis_b'], label='Discriminator B')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_adv_a'], label='Generator A')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_adv_b'], label='Generator B')
+        plt.plot(self.loss['iteration'], self.loss['loss_dis_a'], label='Discriminator A')
+        plt.plot(self.loss['iteration'], self.loss['loss_dis_b'], label='Discriminator B')
         plt.legend()
         plt.savefig(os.path.join(self.path, "valid_progress_adversarial.jpg"), dpi=100)
         plt.close()
 
     def plotContent(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_a_content'], label='Content A')
-        plt.plot(self.loss['loss_gen_b_content'], label='Content B')
-        plt.plot(self.loss['loss_gen_a_identity_content'], label='Content A Identity')
-        plt.plot(self.loss['loss_gen_b_identity_content'], label='Content B Identity')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_a_content'], label='Content A')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_b_content'], label='Content B')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_a_identity_content'], label='Content A Identity')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_b_identity_content'], label='Content B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "valid_progress_content.jpg"), dpi=100)
         plt.close()
 
     def plotNoise(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
-        plt.plot(self.loss['loss_gen_aba_noise'], label='Noise ABA')
-        plt.plot(self.loss['loss_gen_diversity'], label='Diversity')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_a_identity_noise'], label='Noise A Identity')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_aba_noise'], label='Noise ABA')
         plt.legend()
         plt.savefig(os.path.join(self.path, "valid_progress_noise.jpg"), dpi=100)
         plt.close()
 
     def plotDistortion(self):
         plt.figure(figsize=(16, 8))
-        plt.plot(self.loss['loss_gen_a_translate'], label='MAE A')
-        plt.plot(self.loss['loss_gen_b_translate'], label='MAE B')
-        plt.plot(self.loss['loss_gen_a_identity_content'], label='MAE A Identity')
-        plt.plot(self.loss['loss_gen_b_identity_content'], label='MAE B Identity')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_a_translate'], label='MAE A')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_b_translate'], label='MAE B')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_a_identity_content'], label='MAE A Identity')
+        plt.plot(self.loss['iteration'], self.loss['loss_gen_b_identity_content'], label='MAE B Identity')
         plt.legend()
         plt.savefig(os.path.join(self.path, "valid_progress_distortion.jpg"), dpi=100)
         plt.close()

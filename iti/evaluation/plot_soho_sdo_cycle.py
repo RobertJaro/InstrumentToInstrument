@@ -6,7 +6,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 from matplotlib import pyplot as plt
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset

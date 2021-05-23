@@ -2,7 +2,7 @@ import os
 from random import randint
 
 from matplotlib import pyplot as plt
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 
 from iti.data.dataset import HMIContinuumDataset, HinodeDataset, SDODataset, SOHODataset, STEREODataset, KSODataset, \
     KSOFlatDataset, KSOFilmDataset

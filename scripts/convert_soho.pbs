@@ -5,4 +5,4 @@
 #PBS -q gpgpu
 
 cd /home/r.jarolim/projects/InstrumentToInstrument
-python -m iti.train.kso_film_train
+python -m iti.evaluation.convert_soho

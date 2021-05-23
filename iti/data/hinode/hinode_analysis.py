@@ -20,6 +20,7 @@ result = Fido.search(a.Time(hinode_map.date, hinode_map.date + timedelta(minutes
 downloaded_files = Fido.fetch(result[:, 0])
 
 #%%
+
 hmi_map = Map(downloaded_files[0])
 hmi_map.peek()
 

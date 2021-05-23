@@ -10,7 +10,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 from matplotlib import pyplot as plt
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SOHODataset, SDODataset
@@ -40,7 +40,7 @@ soho_base_names = sorted(
     [os.path.basename(path) for path in glob.glob(os.path.join(soho_path, 'eit_171', "**.fits"), recursive=True)])
 soho_base_names = soho_base_names[::len(soho_base_names) // n_samples]
 soho_dates = [parse(f[:-4]) for f in soho_base_names]
-soho_dataset = SOHODataset(soho_path, base_names=soho_base_names)
+soho_dataset = SOHODataset(soho_path, basenames=soho_base_names)
 soho_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
 soho_loader = DataLoader(soho_dataset, batch_size=1, num_workers=4, shuffle=False)
 

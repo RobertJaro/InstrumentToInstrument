@@ -18,6 +18,7 @@ from astropy.visualization import ImageNormalize, LinearStretch, AsinhStretch
 from dateutil.parser import parse
 from matplotlib.colors import LogNorm, Normalize
 from scipy import ndimage
+from skimage.measure import block_reduce
 from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
 from sunpy.map import Map, all_coordinates_from_map, header_helper
@@ -141,12 +142,21 @@ class DataToMapEditor(Editor):
 
 class ContrastNormalizeEditor(Editor):
 
-    def __init__(self, use_median=False):
+    def __init__(self, use_median=False, shift=None, normalization=None):
         self.use_median = use_median
+        self.shift = shift
+        self.normalization = normalization
 
     def call(self, data, **kwargs):
-        shift = np.nanmedian(data) if self.use_median else np.nanmean(data)
-        data = (data - shift) / (np.nanstd(data) + 10e-8)
+        if self.shift is None:
+            shift = np.nanmedian(data) if self.use_median else np.nanmean(data)
+        else:
+            shift = self.shift
+        if self.normalization is None:
+            normalization = np.nanstd(data)
+        else:
+            normalization = self.normalization
+        data = (data - shift) / (normalization + 10e-8)
         return data
 
 
@@ -209,7 +219,7 @@ class KSOPrepEditor(Editor):
             warnings.simplefilter("ignore")  # ignore warnings
             kso_map.meta["waveunit"] = "ag"
             kso_map.meta["arcs_pp"] = kso_map.scale[0].value
-            if 'exptime' not in kso_map.meta:
+            if 'exptime' not in kso_map.meta and 'exp_time' in kso_map.meta:
                 kso_map.meta['exptime'] = kso_map.meta['exp_time'] / 1000 # ms to s
 
             if self.add_rotation:
@@ -343,6 +353,14 @@ class PyramidRescaleEditor(Editor):
         data = pyramid_reduce(data, downscale=self.scale)
         return data
 
+class BlockReduceEditor(Editor):
+
+    def __init__(self, block_size, func=np.mean):
+        self.block_size = block_size
+        self.func = func
+
+    def call(self, data, **kwargs):
+        return block_reduce(data, self.block_size, func=self.func)
 
 class LoadNumpyEditor(Editor):
 
@@ -356,7 +374,8 @@ class StackEditor(Editor):
         self.data_sets = data_sets
 
     def call(self, data, **kwargs):
-        return np.concatenate([dp[data] for dp in self.data_sets], 0)
+        results = [dp.getIndex(data) for dp in self.data_sets]
+        return np.concatenate([img for img, kwargs in results], 0), {'kwargs_list': [kwargs for img, kwargs in results]}
 
 class DistributeEditor(Editor):
 
@@ -458,26 +477,32 @@ class SliceEditor(Editor):
         return data[self.start:self.stop]
 
 class BrightestPixelPatchEditor(Editor):
-    def __init__(self, patch_shape, idx=0):
+    def __init__(self, patch_shape, idx=0, random_selection=0.2):
         self.patch_shape = patch_shape
         self.idx = idx
+        self.random_selection = random_selection
 
     def call(self, data, **kwargs):
         assert data.shape[1] >= self.patch_shape[0], 'Invalid data shape: %s' % str(data.shape)
         assert data.shape[2] >= self.patch_shape[1], 'Invalid data shape: %s' % str(data.shape)
 
-        smoothed = ndimage.gaussian_filter(data[self.idx], sigma=5)
-        pixel_pos = np.argwhere(smoothed == np.nanmax(smoothed))
-        pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
-        pixel_pos = np.min([pixel_pos[0], smoothed.shape[0] - self.patch_shape[0] // 2]), np.min(
-            [pixel_pos[1], smoothed.shape[1] - self.patch_shape[1] // 2])
-        pixel_pos = np.max([pixel_pos[0], self.patch_shape[0] // 2]), np.max([pixel_pos[1], self.patch_shape[1] // 2])
+        if random.random() <= self.random_selection:
+            x = randint(0, data.shape[1] - self.patch_shape[0])
+            y = randint(0, data.shape[2] - self.patch_shape[1])
+            patch = data[:, x:x + self.patch_shape[0], y:y + self.patch_shape[1]]
+        else:
+            smoothed = ndimage.gaussian_filter(data[self.idx], sigma=5)
+            pixel_pos = np.argwhere(smoothed == np.nanmax(smoothed))
+            pixel_pos = pixel_pos[randint(0, len(pixel_pos) - 1)]
+            pixel_pos = np.min([pixel_pos[0], smoothed.shape[0] - self.patch_shape[0] // 2]), np.min(
+                [pixel_pos[1], smoothed.shape[1] - self.patch_shape[1] // 2])
+            pixel_pos = np.max([pixel_pos[0], self.patch_shape[0] // 2]), np.max([pixel_pos[1], self.patch_shape[1] // 2])
 
-        x = pixel_pos[0]
-        y = pixel_pos[1]
-        patch = data[:,
-                x - int(np.floor(self.patch_shape[0] / 2)):x + int(np.ceil(self.patch_shape[0] / 2)),
-                y - int(np.floor(self.patch_shape[1] / 2)):y + int(np.ceil(self.patch_shape[1] / 2)), ]
+            x = pixel_pos[0]
+            y = pixel_pos[1]
+            patch = data[:,
+                    x - int(np.floor(self.patch_shape[0] / 2)):x + int(np.ceil(self.patch_shape[0] / 2)),
+                    y - int(np.floor(self.patch_shape[1] / 2)):y + int(np.ceil(self.patch_shape[1] / 2)), ]
         assert np.std(patch) != 0, 'Invalid patch found (all values %f)' % np.mean(patch)
         return patch
 
@@ -515,11 +540,13 @@ class UnpaddingEditor(Editor):
         p = self.target_shape
         x_unpad = (s[-2] - p[0]) / 2
         y_unpad = (s[-1] - p[1]) / 2
-        unpad = [(int(np.floor(y_unpad)), int(np.ceil(y_unpad))),
-               (int(np.floor(x_unpad)), int(np.ceil(x_unpad)))]
-        print(unpad)
-        print(data.shape)
-        return data[:, unpad[0][0]:-unpad[0][1], unpad[1][0]:-unpad[1][1]]
+        #
+        unpad = [(None if int(np.floor(y_unpad)) == 0 else int(np.floor(y_unpad)),
+                  None if int(np.ceil(y_unpad)) == 0 else -int(np.ceil(y_unpad))),
+               (None if int(np.floor(x_unpad)) == 0 else int(np.floor(x_unpad)),
+                None if int(np.ceil(x_unpad)) == 0 else -int(np.ceil(x_unpad)))]
+        data = data[:, unpad[0][0]:unpad[0][1], unpad[1][0]:unpad[1][1]]
+        return data
 
 class ReductionEditor(Editor):
 
@@ -568,13 +595,13 @@ class LimbDarkeningCorrectionEditor(Editor):
         map_list = np.ravel(s_map.data)[condition]
         correction_list = np.ravel(ideal_correction)[condition]
 
-        fit = np.polyfit(correction_list, map_list, 5)
+        fit = np.polyfit(correction_list, map_list, 4)
         poly_fit = np.poly1d(fit)
 
         map_correction = poly_fit(ideal_correction)
         corrected_map = s_map.data / map_correction
 
-        return Map(corrected_map.astype(np.float32), s_map.meta)
+        return Map(corrected_map, s_map.meta)
 
 
 def get_local_correction_table():

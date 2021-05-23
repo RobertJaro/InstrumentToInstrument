@@ -58,13 +58,13 @@ print(np.nanmean(getdata(invalid_file_path)))
 plt.savefig('/gss/r.jarolim/data/converted/iti_samples/invalid_mag.jpg')
 plt.close()
 
-# lists = [glob.glob('/gss/r.jarolim/data/soho/train/eit_171/*.fits'),
-#          glob.glob('/gss/r.jarolim/data/soho/train/eit_195/*.fits'),
-#          glob.glob('/gss/r.jarolim/data/soho/train/eit_284/*.fits'),
-#          glob.glob('/gss/r.jarolim/data/soho/train/eit_304/*.fits'),
-#          glob.glob('/gss/r.jarolim/data/soho/train/mdi_mag/*.fits'),]
+# lists = [glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/171/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/195/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/284/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/304/*.fits'),
+#          glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/mag/*.fits'),]
 # joined_files = set.intersection(*map(set,[[os.path.basename(f) for f in files] for files in lists]))
-
-
-
-#[len([os.remove(f) for f in files if os.path.basename(f) not in joined_files]) for files in lists]
+#
+#
+#
+# [len([os.remove(f) for f in files if os.path.basename(f) not in joined_files]) for files in lists]

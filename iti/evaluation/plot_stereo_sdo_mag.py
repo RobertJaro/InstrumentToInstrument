@@ -9,7 +9,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
 from matplotlib import pyplot as plt
 from skimage.io import imsave
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SOHODataset, STEREODataset
@@ -24,7 +24,7 @@ soho_shape = 1024
 base_path = "/gss/r.jarolim/iti/stereo_mag_v3"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/valid", base_names=['2014-12-24T00:20.fits']) # 2006-12-19T00:15.fits
+stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/valid", basenames=['2014-12-24T00:20.fits']) # 2006-12-19T00:15.fits
 stereo_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
 loader = DataLoader(stereo_dataset, batch_size=1)
 iter = loader.__iter__()

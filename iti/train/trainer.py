@@ -1,4 +1,4 @@
-import glob
+import logging
 import logging
 import os
 from datetime import datetime
@@ -6,6 +6,7 @@ from random import randint
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import InstanceNorm2d
@@ -13,7 +14,6 @@ from torch.utils.data import DataLoader
 
 from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
 
-import torch.nn.functional as F
 
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
@@ -69,7 +69,8 @@ class Trainer(nn.Module):
         self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator, upsampling, n_filters,
                                   norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain a-->b
         self.gen_ba = GeneratorBA(input_dim_b, input_dim_a, noise_dim, depth_generator, depth_noise, upsampling,
-                                  n_filters, norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain b-->a
+                                  n_filters, norm=norm, output_activ=activation,
+                                  pad_type='reflect')  # generator for domain b-->a
         self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators,
                                    depth_discriminator, discriminator_mode,
                                    norm=norm)  # discriminator for domain a
@@ -91,6 +92,25 @@ class Trainer(nn.Module):
 
         # Training utils
         self.gen_stack = []
+        loss_keys = [
+            'iteration',
+            'loss_gen_a_identity',
+            'loss_gen_b_identity',
+            'loss_gen_a_translate',
+            'loss_gen_b_translate',
+            'loss_gen_adv_a',
+            'loss_gen_adv_b',
+            'loss_gen_a_content',
+            'loss_gen_b_content',
+            'loss_gen_a_identity_content',
+            'loss_gen_b_identity_content',
+            'loss_gen_aba_noise',
+            'loss_gen_a_identity_noise',
+            'loss_dis_a',
+            'loss_dis_b',
+            'loss_gen_diversity']
+        self.train_loss = {key: [] for key in loss_keys}
+        self.valid_loss = {key: [] for key in loss_keys}
 
         logging.info("Total Parameters Generator (BA/AB): %.02f/%.02f M" %
                      (sum(p.numel() for p in self.gen_ba.parameters()) / 1e6,
@@ -158,7 +178,7 @@ class Trainer(nn.Module):
             idx = randint(0, self.input_dim_a - 1)
             x_a_upsample = x_a_upsample[:, idx:idx + 1]
             x_a_identity = self.gen_ba(x_a_upsample, n_a)
-        else: # channel difference 0 == no change of dims
+        else:  # channel difference 0 == no change of dims
             c_diff = self.input_dim_b - self.input_dim_a
 
             x_b_downsample = self.downsample(x_b)
@@ -166,7 +186,8 @@ class Trainer(nn.Module):
             x_b_identity = self.gen_ab(x_b_downsample)
 
             x_a_upsample = self.upsample(x_a)
-            x_a_upsample = F.pad(x_a_upsample, [0, 0, 0, 0, 0, c_diff], mode='constant', value=0) if c_diff > 0 else x_a_upsample
+            x_a_upsample = F.pad(x_a_upsample, [0, 0, 0, 0, 0, c_diff], mode='constant',
+                                 value=0) if c_diff > 0 else x_a_upsample
             x_a_identity = self.gen_ba(x_a_upsample, n_a)
 
         n_a_identity = self.estimator_noise(x_a_identity)
@@ -202,7 +223,7 @@ class Trainer(nn.Module):
         self.loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
         # Diversity loss
         if self.lambda_diversity > 0:
-            with torch.no_grad(): # no double back-prop
+            with torch.no_grad():  # no double back-prop
                 n_gen_2 = self.generateNoise(x_b)
                 x_ba_div = self.gen_ba(x_b, n_gen_2).detach()
             diversity_diff = self.dis_a.calc_content_loss(x_ba, x_ba_div)
@@ -226,7 +247,6 @@ class Trainer(nn.Module):
     def validate(self, x_a, x_b):
         self.eval()
         with torch.no_grad():
-
             # noise init
             n_a = self.estimator_noise(x_a)
             n_gen = self.generateNoise(x_b)
@@ -254,7 +274,7 @@ class Trainer(nn.Module):
             # GAN loss
             self.valid_loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
             self.valid_loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
-            self.valid_loss_dis_a = self.dis_a.calc_gen_loss(x_a) # use only real images fro validation
+            self.valid_loss_dis_a = self.dis_a.calc_gen_loss(x_a)  # use only real images fro validation
             self.valid_loss_dis_b = self.dis_b.calc_gen_loss(x_b)
             # Content loss
             self.valid_loss_gen_a_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_aba))
@@ -266,13 +286,14 @@ class Trainer(nn.Module):
             self.valid_loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
         self.train()
 
-    def fill_stack(self, inputs):
-        for x_a, x_b in inputs:
-            with torch.no_grad():
-                n_gen = self.generateNoise(x_b)
-                x_ab = self.gen_ab(x_a).cpu().detach()
-                x_ba = self.gen_ba(x_b, n_gen).cpu().detach()
-                self.gen_stack.append((x_ab, x_ba))
+    def fill_stack(self,  x_a, x_b):
+        self.eval()
+        with torch.no_grad():
+            n_gen = self.generateNoise(x_b)
+            x_ab = self.gen_ab(x_a).cpu().detach()
+            x_ba = self.gen_ba(x_b, n_gen).cpu().detach()
+            self.gen_stack.append((x_ab, x_ba))
+        self.train()
 
     def discriminator_update(self, x_a, x_b):
         self.dis_opt.zero_grad()
@@ -300,7 +321,8 @@ class Trainer(nn.Module):
         return n_gen
 
     def resume(self, checkpoint_dir, epoch=None):
-        path = os.path.join(checkpoint_dir, 'checkpoint.pt') if epoch is None else os.path.join(checkpoint_dir, 'checkpoint_%d.pt' % epoch)
+        path = os.path.join(checkpoint_dir, 'checkpoint.pt') if epoch is None else os.path.join(checkpoint_dir,
+                                                                                                'checkpoint_%d.pt' % epoch)
         if not os.path.exists(path):
             return 0
         state_dict = torch.load(path)
@@ -314,7 +336,10 @@ class Trainer(nn.Module):
         # Load optimizers
         self.gen_opt.load_state_dict(state_dict['opt_gen'])
         self.dis_opt.load_state_dict(state_dict['opt_dis'])
+        # Load history
         last_iteration = state_dict['iteration']
+        self.train_loss = state_dict['train_loss'] if 'train_loss' in state_dict else self.train_loss
+        self.valid_loss = state_dict['valid_loss'] if 'valid_loss' in state_dict else self.valid_loss
         print('Resume from iteration %d' % last_iteration)
         return last_iteration
 
@@ -329,7 +354,9 @@ class Trainer(nn.Module):
                  'disc_a': self.dis_a.state_dict(),
                  'disc_b': self.dis_b.state_dict(),
                  'opt_gen': self.gen_opt.state_dict(),
-                 'opt_dis': self.dis_opt.state_dict()}
+                 'opt_dis': self.dis_opt.state_dict(),
+                 'train_loss': self.train_loss,
+                 'valid_loss': self.valid_loss}
         torch.save(state, state_path)
         if (iterations + 1) % 20000 == 0:
             torch.save(state, checkpoint_path)

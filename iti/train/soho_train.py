@@ -2,6 +2,7 @@ import logging
 import os
 
 from sunpy.visualization.colormaps import cm
+from tqdm import tqdm
 
 from iti.data.editor import RandomPatchEditor
 from iti.train.model import DiscriminatorMode
@@ -16,7 +17,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback, ValidationHistoryCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/soho_sdo_v24"
+base_dir = "/gss/r.jarolim/iti/soho_sdo_v25"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -36,26 +37,24 @@ trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-sdo_train = SDODataset("/gss/r.jarolim/data/ch_detection", patch_shape=(1024, 1024), resolution=2048)
-sdo_train = StorageDataset(sdo_train, '/gss/r.jarolim/data/converted/sdo_2048_train',
+sdo_train = SDODataset("/gss/r.jarolim/data/ch_detection", patch_shape=(1024, 1024), resolution=2048, months=list(range(11)), years=list(range(2011, 2021)))
+sdo_train = StorageDataset(sdo_train, '/gss/r.jarolim/data/converted/sdo_2048',
                            ext_editors=[RandomPatchEditor((256, 256))])
 
-soho_train = SOHODataset("/gss/r.jarolim/data/soho/train", resolution=1024)
-soho_train = StorageDataset(soho_train, '/gss/r.jarolim/data/converted/soho_train',
+soho_train = SOHODataset("/gss/r.jarolim/data/soho_iti2021_prep", resolution=1024, months=list(range(11)))
+soho_train = StorageDataset(soho_train, '/gss/r.jarolim/data/converted/soho_1024',
                             ext_editors=[RandomPatchEditor((128, 128))])
 
-sdo_valid = SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(1024, 1024), resolution=2048)
-sdo_valid = StorageDataset(sdo_valid, '/gss/r.jarolim/data/converted/sdo_2048_valid',
-                           ext_editors=[RandomPatchEditor((256, 256))])
+sdo_valid = SDODataset("/gss/r.jarolim/data/ch_detection", patch_shape=(1024, 1024), resolution=2048, months=[11, 12], limit=100)
+sdo_valid = StorageDataset(sdo_valid, '/gss/r.jarolim/data/converted/sdo_2048', ext_editors=[RandomPatchEditor((256, 256))])
 
-soho_valid = SOHODataset("/gss/r.jarolim/data/soho/valid", resolution=1024)
-soho_valid = StorageDataset(soho_valid, '/gss/r.jarolim/data/converted/soho_valid',
-                                    ext_editors=[RandomPatchEditor((128, 128))])
+soho_valid = SOHODataset("/gss/r.jarolim/data/soho_iti2021_prep", resolution=1024, months=[11, 12], limit=100)
+soho_valid = StorageDataset(soho_valid, '/gss/r.jarolim/data/converted/soho_1024', ext_editors=[RandomPatchEditor((128, 128))])
 
 sdo_iterator = loop(DataLoader(sdo_train, batch_size=1, shuffle=True, num_workers=8))
 soho_iterator = loop(DataLoader(soho_train, batch_size=1, shuffle=True, num_workers=8))
 
-# Init Plot Callbacks
+# Init Callbacks
 history = HistoryCallback(trainer, base_dir)
 validation = ValidationHistoryCallback(trainer, soho_valid, sdo_valid, base_dir, log_iteration)
 progress = ProgressCallback(trainer)
@@ -76,8 +75,8 @@ plot_settings_B = [
     {"cmap": "gray", "title": "HMI Magnetogram", 'vmin': -1, 'vmax': 1},
 ]
 
-soho_plot = SOHODataset("/gss/r.jarolim/data/soho/valid", patch_shape=(1024, 1024))
-sdo_plot = SDODataset("/gss/r.jarolim/data/sdo/valid", patch_shape=(2048, 2048))
+soho_plot = SOHODataset("/gss/r.jarolim/data/soho_iti2021_prep", patch_shape=(1024, 1024), months=[11, 12])
+sdo_plot = SDODataset("/gss/r.jarolim/data/ch_detection", patch_shape=(2048, 2048), months=[11, 12])
 
 bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
@@ -99,11 +98,11 @@ v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, lo
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
 callbacks = [save, history, progress, bab_callback, aba_callback, v_callback, full_disc_aba_callback,
-             full_disc_bab_callback]
+             full_disc_bab_callback, validation]
 
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 300000:
+    if it > 100000:
         trainer.gen_ab.eval()  # fix running stats
         trainer.gen_ba.eval()  # fix running stats
     #

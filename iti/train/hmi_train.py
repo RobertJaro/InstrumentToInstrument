@@ -4,6 +4,7 @@ import os
 from random import sample
 
 from astropy.io.fits import getdata, getheader
+from dateutil.parser import parse
 from tqdm import tqdm
 
 from iti.data.editor import RandomPatchEditor
@@ -19,6 +20,8 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
 from iti.train.trainer import Trainer, loop
 
 import numpy as np
+
+import pandas as pd
 
 base_dir = "/gss/r.jarolim/iti/hmi_hinode_v12"
 prediction_dir = os.path.join(base_dir, 'prediction')
@@ -37,26 +40,20 @@ trainer.cuda()
 trainer.train()
 start_it = trainer.resume(base_dir)
 
-# Find Hinode Files
-hinode_files = sorted(glob.glob('/gss/r.jarolim/data/hinode/level1/*.fits'))
-special_features = []
-quite_sun = []
-for f in tqdm(hinode_files):
-    data = np.ravel(getdata(f)) / getheader(f)['EXPTIME']
-    if np.sum(data < 25000) > 2000:
-        special_features.append(f)
-    else:
-        quite_sun.append(f)
-hinode_files = special_features + sample(quite_sun, len(special_features) * 2)
+df = pd.read_csv('/gss/r.jarolim/data/hinode/file_list.csv', index_col=False, parse_dates=['date'])
+train_df = df[(df.date.dt.month != 12) & (df.date.dt.month != 11)]
+features = train_df[train_df.classification == 'feature']
+quiet = train_df[train_df.classification == 'quiet']
+limb = train_df[train_df.classification == 'limb']
+hinode_files = list(features.file) + list(limb.file) + sample(list(quiet.file), len(features) + len(limb))
 
 # Init Dataset
-hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173", (512, 512))
-hmi_dataset = StorageDataset(hmi_dataset,
-                             '/gss/r.jarolim/data/converted/hmi_train',
-                             ext_editors=[RandomPatchEditor((160, 160))])
+hmi_files = glob.glob("/gss/r.jarolim/data/hmi_continuum/6173/*.fits")
+hmi_files = [f for f in hmi_files if parse(os.path.basename(f).replace('.fits', '')).month != 12]
+hmi_dataset = HMIContinuumDataset(hmi_files, (512, 512))
+hmi_dataset = StorageDataset(hmi_dataset, '/gss/r.jarolim/data/converted/hmi_continuum', ext_editors=[RandomPatchEditor((160, 160))])
 
-hinode_dataset = StorageDataset(HinodeDataset(hinode_files),
-                                '/gss/r.jarolim/data/converted/hinode_train',
+hinode_dataset = StorageDataset(HinodeDataset(hinode_files), '/gss/r.jarolim/data/converted/hinode_continuum',
                                 ext_editors=[RandomPatchEditor((640, 640))])
 
 hmi_iterator = loop(DataLoader(hmi_dataset, batch_size=1, shuffle=True, num_workers=8))

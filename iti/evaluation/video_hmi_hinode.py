@@ -9,7 +9,7 @@ from matplotlib.colors import Normalize
 from sunpy.map import Map
 from sunpy.physics.differential_rotation import solar_rotate_coordinate
 
-from iti.download.hmi_continuum_download import HMIContinuumFetcher
+from iti.download.download_hmi_continuum import HMIContinuumDownloader
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -45,7 +45,7 @@ hinode_date = parse(hinode_sample[-22:-7].replace('_', 'T'))
 hinode_dates = [hinode_date - timedelta(seconds=45) * i for i in range(2 * 80)]
 
 
-fetcher = HMIContinuumFetcher(ds_path=data_path, num_worker_threads=2, ignore_quality=True, series='hmi.Ic_45s')
+fetcher = HMIContinuumDownloader(ds_path=data_path, num_worker_threads=2, ignore_quality=True, series='hmi.Ic_45s')
 fetcher.fetchDates(hinode_dates)
 
 hmi_dataset = HMIContinuumDataset(data_path)

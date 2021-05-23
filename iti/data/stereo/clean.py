@@ -3,6 +3,7 @@ import os
 
 from astropy.io.fits import getheader, getdata
 import numpy as np
+from sunpy.map import Map
 from tqdm import tqdm
 
 def clean(path):
@@ -10,24 +11,23 @@ def clean(path):
     mins = []
     maxs = []
     for f in tqdm(files):
-        data = getdata(f)
-        header = getheader(f)
-        if data.shape != (1024, 1024) or header['NMISSING'] != 0:
-            print(data.shape)
+        s_map = Map(f)
+        header = s_map.meta
+        if header['NAXIS1'] < 2048 or header['NAXIS2'] < 2048 or header['NMISSING'] != 0:
             print(header['NMISSING'])
             #os.remove(f)
             continue
-        #print('valid')
+        print('valid')
         mins.append(header['DATAMIN'])
         maxs.append(header['DATAMAX'])
     print(np.median(mins), np.median(maxs))
 
 ds_path = '/gss/r.jarolim/data/stereo_prep/valid'
 
-clean(os.path.join(ds_path, 'secchi_171/*.fits'))
-clean(os.path.join(ds_path, 'secchi_195/*.fits'))
-clean(os.path.join(ds_path, 'secchi_284/*.fits'))
-clean(os.path.join(ds_path, 'secchi_304/*.fits'))
+clean(os.path.join(ds_path, '171/*.fits'))
+clean(os.path.join(ds_path, '195/*.fits'))
+clean(os.path.join(ds_path, '284/*.fits'))
+clean(os.path.join(ds_path, '304/*.fits'))
 
 lists = [glob.glob(os.path.join(ds_path, 'secchi_171/*.fits')),
          glob.glob(os.path.join(ds_path, 'secchi_195/*.fits')),

@@ -9,7 +9,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
 from matplotlib import pyplot as plt
 from skimage.io import imsave
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SOHODataset, STEREODataset
@@ -21,15 +21,15 @@ from astropy import units as u
 import numpy as np
 
 stereo_shape = 1024
-base_path = "/gss/r.jarolim/iti/stereo_mag_v4"
+base_path = "/gss/r.jarolim/iti/stereo_mag_v7"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", base_names=['2007-01-01T05:03.fits'])
+stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", basenames=['2007-01-01T05:03.fits'])
 stereo_dataset.addEditor(PaddingEditor((stereo_shape, stereo_shape)))
 loader = DataLoader(stereo_dataset, batch_size=1)
 iter = loader.__iter__()
 
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", base_names=['2007-01-01T01:19.fits'])
+soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/train", basenames=['2007-01-01T01:19.fits'])
 soho_dataset.addEditor(PaddingEditor((stereo_shape, stereo_shape)))
 
 trainer = Trainer(4, 5, upsampling=2, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0, norm='in_rs_aff')

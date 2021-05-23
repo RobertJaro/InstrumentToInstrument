@@ -14,8 +14,8 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/kso_quality_512_v4"
-resolution = 512
+base_dir = "/gss/r.jarolim/iti/kso_quality_1024_v5"
+resolution = 1024
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -48,7 +48,7 @@ q2_fulldisc = StorageDataset(q2_dataset, '/gss/r.jarolim/data/converted/iti/kso_
 q1_iterator = loop(DataLoader(q1_storage, batch_size=1, shuffle=True, num_workers=8))
 q2_iterator = loop(DataLoader(q2_storage, batch_size=1, shuffle=True, num_workers=8))
 
-# Init Plot Callbacks
+# Init Callbacks
 history = HistoryCallback(trainer, base_dir)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
@@ -86,7 +86,7 @@ for it in range(start_it, int(1e8)):
     x_a, x_b = next(q2_iterator), next(q1_iterator)
     x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
     trainer.generator_update(x_a, x_b)
-    # torch.cuda.synchronize()
+    torch.cuda.synchronize()
     #
     for callback in callbacks:
         callback(it)

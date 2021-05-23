@@ -9,7 +9,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 from matplotlib import pyplot as plt
-from sunpy.cm import cm
+from sunpy.visualization.colormaps import cm
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SOHODataset
@@ -26,7 +26,7 @@ soho_shape = 1024
 base_path = "/gss/r.jarolim/iti/soho_sdo_v23"
 
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid", base_names=['2001-12-31T01:19.fits'])
+soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid", basenames=['2001-12-31T01:19.fits'])
 soho_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
 loader = DataLoader(soho_dataset, batch_size=1)
 iter = loader.__iter__()

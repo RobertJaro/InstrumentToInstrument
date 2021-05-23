@@ -32,10 +32,20 @@ plt.close()
 
 
 maxs = []
-for f in tqdm(sorted(glob.glob('/gss/r.jarolim/data/hinode/gband/*.fits'))):
-    data = getdata(f) / getheader(f)['EXPTIME']
+maxs_exp = []
+exp_times = []
+for f in tqdm(sorted(glob.glob(os.path.join('/gss/r.jarolim/data/hinode/level1', '*.fits')))):
+    data = getdata(f)
+    exp_time = getheader(f)['EXPTIME']
+    exp_times.append(exp_time)
+    maxs_exp.append(np.max(data) / exp_time)
     maxs.append(np.max(data))
 
-plt.hist(maxs)
-plt.savefig('/gss/r.jarolim/data/hinode/gband_hist_max.jpg')
+plt.subplot(311)
+plt.hist(maxs, bins=100)
+plt.subplot(312)
+plt.hist(maxs_exp, bins=100)
+plt.subplot(313)
+plt.hist(exp_times, bins=100)
+plt.savefig('/gss/r.jarolim/data/hinode/continuum_hist.jpg')
 plt.close()

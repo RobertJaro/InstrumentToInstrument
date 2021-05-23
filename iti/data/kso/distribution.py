@@ -1,26 +1,46 @@
+import glob
 import os
 import random
+from multiprocessing import Pool
 
+from scipy.stats import median_absolute_deviation
+from sunpy.map import all_coordinates_from_map, Map
 from tqdm import tqdm
+
+from iti.data.editor import NormalizeRadiusEditor, KSOPrepEditor, LimbDarkeningCorrectionEditor
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from iti.data.dataset import KSOFlatDataset
 from matplotlib import pyplot as plt
 
 import numpy as np
 
-q1_dataset = KSOFlatDataset("/gss/r.jarolim/data/anomaly_data_set/quality1", 512)
+from astropy import units as u
 
-fig, axs = plt.subplots(10, 1, figsize=(4, 20), sharex=True)
-for i, ax in zip(random.sample(range(len(q1_dataset)), len(axs)), axs):
-    ax.hist(np.ravel(q1_dataset[i]), 100)
+files = sorted(glob.glob("/gss/r.jarolim/data/kso_synoptic/*.fts.gz"))
 
-plt.tight_layout()
-plt.savefig('/gss/r.jarolim/iti/kso_quality_512_v4/hist.jpg')
+kso_prep = KSOPrepEditor()
+noormalize_radius = NormalizeRadiusEditor(1024, 0)
+limb_correct = LimbDarkeningCorrectionEditor()
 
-plt.figure(figsize=(8, 4))
-maxs = [np.nanmax(q1_dataset[i]) for i in tqdm(random.sample(range(len(q1_dataset)), 100))]
-plt.hist(maxs, 50)
-plt.tight_layout()
-plt.savefig('/gss/r.jarolim/iti/kso_quality_512_v4/hist.jpg')
+def getValues(f):
+    s_map = Map(f)
+    #
+    s_map = kso_prep.call(s_map)
+    s_map = noormalize_radius.call(s_map)
+    s_map = limb_correct.call(s_map)
+
+    return s_map.data, np.nanmedian(s_map.data), np.nanstd(s_map.data)
+
+
+with Pool(8) as p:
+    values = [v for v in tqdm(p.imap(getValues, files[::50]), total=len(files[::50]))]
+
+median = np.mean([m for v, m, s in values])
+print('Median', median)
+std = np.mean([s for v, m, s in values])
+print('Std', std)
+
+plt.hist(np.concatenate([np.ravel(v) for v, m, s in values]), bins=100)
+plt.savefig('/gss/r.jarolim/data/converted/kso_synoptic_img/hist.jpg')
+plt.close()
