@@ -1,11 +1,6 @@
-import glob
 import logging
 import os
 from random import sample
-
-from astropy.io.fits import getdata, getheader
-from dateutil.parser import parse
-from tqdm import tqdm
 
 from iti.data.editor import RandomPatchEditor
 
@@ -19,11 +14,9 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback
 from iti.train.trainer import Trainer, loop
 
-import numpy as np
-
 import pandas as pd
 
-base_dir = "/gss/r.jarolim/iti/hmi_hinode_v12"
+base_dir = "/gss/r.jarolim/iti/hmi_hinode_v13"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -48,10 +41,9 @@ limb = train_df[train_df.classification == 'limb']
 hinode_files = list(features.file) + list(limb.file) + sample(list(quiet.file), len(features) + len(limb))
 
 # Init Dataset
-hmi_files = glob.glob("/gss/r.jarolim/data/hmi_continuum/6173/*.fits")
-hmi_files = [f for f in hmi_files if parse(os.path.basename(f).replace('.fits', '')).month != 12]
-hmi_dataset = HMIContinuumDataset(hmi_files, (512, 512))
-hmi_dataset = StorageDataset(hmi_dataset, '/gss/r.jarolim/data/converted/hmi_continuum', ext_editors=[RandomPatchEditor((160, 160))])
+hmi_dataset = HMIContinuumDataset('/gss/r.jarolim/data/hmi_continuum/6173', (512, 512), months=list(range(11)))
+hmi_dataset = StorageDataset(hmi_dataset, '/gss/r.jarolim/data/converted/hmi_continuum',
+                             ext_editors=[RandomPatchEditor((160, 160))])
 
 hinode_dataset = StorageDataset(HinodeDataset(hinode_files), '/gss/r.jarolim/data/converted/hinode_continuum',
                                 ext_editors=[RandomPatchEditor((640, 640))])
@@ -91,7 +83,7 @@ callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
 #                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
-    if it > 250000:
+    if it > 100000:
         trainer.gen_ab.eval()  # fix running stats
         trainer.gen_ba.eval()  # fix running stats
     x_a, x_b = next(hmi_iterator), next(hinode_iterator)

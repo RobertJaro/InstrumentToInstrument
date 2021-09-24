@@ -1,94 +1,87 @@
+import glob
 import os
+from datetime import timedelta, datetime
+from warnings import simplefilter
 
+from aiapy.calibrate import correct_degradation
+from astropy import units as u
 from astropy.coordinates import SkyCoord
-from matplotlib.colors import Normalize
-from sunpy.map import Map
+from dateutil.parser import parse
+from matplotlib.cm import get_cmap
+from skimage.io import imsave
+from sunpy.map import Map, all_coordinates_from_map
+from sunpy.map.sources import AIAMap, MDIMap
+from sunpy.visualization.colormaps import cm
+from tqdm import tqdm
+
+from iti.data.editor import sdo_norms, soho_norms, get_local_correction_table
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-import torch
-from matplotlib import pyplot as plt
-from sunpy.visualization.colormaps import cm
-from torch.utils.data import DataLoader
-
-from iti.data.dataset import SOHODataset
-from iti.data.editor import PaddingEditor, LoadMapEditor, NormalizeRadiusEditor
-from iti.train.model import DiscriminatorMode
-from iti.train.trainer import Trainer
-
-from astropy import units as u
+from iti.prediction.translate import SOHOToSDO
 
 import numpy as np
 
-sdo_shape = 2048
-soho_shape = 1024
-base_path = "/gss/r.jarolim/iti/soho_sdo_v23"
+# init
+base_path = "/gss/r.jarolim/iti/soho_sdo_v25"
+prediction_path = os.path.join(base_path, 'samples')
+os.makedirs(prediction_path, exist_ok=True)
+# create translator
+translator = SOHOToSDO(model_path=os.path.join(base_path, 'generator_AB.pt'))
 
-os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho/valid", basenames=['2000-11-12T01:19.fits'])
-soho_dataset.addEditor(PaddingEditor((soho_shape, soho_shape)))
-loader = DataLoader(soho_dataset, batch_size=1)
-iter = loader.__iter__()
+# translate
+basenames_soho = [[os.path.basename(f) for f in glob.glob('/gss/r.jarolim/data/soho_iti2021_prep/%s/*.fits' % wl)] for
+                  wl in ['171', '195', '284', '304', 'mag']]
 
-trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS,
-                  lambda_diversity=0, norm='in_rs_aff')
-trainer.cuda()
-iteration = trainer.resume(base_path)
-trainer.eval()
+basenames_soho = np.array(sorted(list(set(basenames_soho[0]).intersection(*basenames_soho[1:]))))
+dates_soho = np.array([parse(f.split('.')[0]) for f in basenames_soho])
 
-with torch.no_grad():
-    soho_img = next(iter).float().cuda()
-    sdo_img = trainer.forwardAB(soho_img)
-    soho_img = soho_img.detach().cpu().numpy()
-    sdo_img = sdo_img.detach().cpu().numpy()
+cond = [d.month in [11, 12] for d in dates_soho]
+dates_soho = dates_soho[cond][::100]
+basenames_soho = basenames_soho[cond][::100]
 
-sdo_img[0, -1] = -sdo_img[0, -1]
+iti_maps = translator.translate('/gss/r.jarolim/data/soho_iti2021_prep', basenames=basenames_soho)
+soho_maps = ([Map('/gss/r.jarolim/data/soho_iti2021_prep/%s/%s' % (dir, basename))
+              for dir in ['171', '195', '284', '304', 'mag']]
+             for basename in basenames_soho)
 
-soho_cmaps = [
-    # cm.sohoeit171,
-    # cm.sohoeit195,
-    # cm.sohoeit284,
-    # cm.sohoeit304,
-    # plt.get_cmap('gray')
+cmaps = [
     cm.sdoaia171,
     cm.sdoaia193,
     cm.sdoaia211,
     cm.sdoaia304,
-    plt.get_cmap('gray')
+    'gray'
 ]
 
-sdo_cmaps = [
-    cm.sdoaia171,
-    cm.sdoaia193,
-    cm.sdoaia211,
-    cm.sdoaia304,
-    plt.get_cmap('gray')
-]
+pos = 1000
 
-reference_map, _ = LoadMapEditor().call(soho_dataset.data_sets[0].data[0])
-reference_map = NormalizeRadiusEditor(soho_shape).call(reference_map)
-
-fig, axs = plt.subplots(2, 5, figsize=(5 * 4, 2 * 4), sharex=True, sharey=True)
-sub_frame_x = [-500, -350] * u.arcsec
-sub_frame_y = [-450, -300] * u.arcsec
-
-for c in range(5):
-    s_map = Map(soho_img[0, c], reference_map.meta)
-    s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
-    s_map.plot(axes=axs[0, c], cmap=soho_cmaps[c], title='', norm=Normalize(vmin=-1, vmax=1))
-
-reference_map = reference_map.resample(sdo_img.shape[2:] * u.pix)
-for c in range(5):
-    s_map = Map(sdo_img[0, c], reference_map.meta)
-    s_map = s_map.submap(SkyCoord(sub_frame_x, sub_frame_y, frame=s_map.coordinate_frame))
-    s_map.plot(axes=axs[1, c], cmap=sdo_cmaps[c], title='', norm=Normalize(vmin=-1, vmax=1))
-
-[(ax.set_xlabel(None), ax.set_ylabel(None)) for ax in np.ravel(axs)]
-fontsize = 13
-axs[0, 0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-axs[1, 0].set_ylabel('Helioprojective latitude [arcsec]', fontsize=fontsize)
-[ax.set_xlabel('Helioprojective longitude [arcsec]', fontsize=fontsize) for ax in axs[1]]
-
-plt.tight_layout()
-plt.savefig(os.path.join(base_path, 'evaluation/comparison_%06d.jpg' % iteration), dpi=300)
-plt.close()
+for soho_cube, iti_cube in tqdm(zip(soho_maps, iti_maps), total=len(dates_soho)):
+    date = soho_cube[0].date.datetime
+    simplefilter('ignore')  # ignore int conversion warning
+    dir = os.path.join(os.path.join(prediction_path, '%s') % date.isoformat())
+    if os.path.exists(dir):
+        continue
+    os.makedirs(dir, exist_ok=True)
+    for i, (s_map, cmap, norm) in enumerate(zip(soho_cube, cmaps, soho_norms.values())):
+        cmap = get_cmap(cmap) if isinstance(cmap, str) else cmap
+        s_map = s_map.rotate(recenter=True)
+        bl = SkyCoord(-pos * u.arcsec, -pos * u.arcsec, frame=s_map.coordinate_frame)
+        tr = SkyCoord(pos * u.arcsec, pos * u.arcsec, frame=s_map.coordinate_frame)
+        s_map = s_map.submap(bl, top_right=tr)
+        if i == 4:
+            hpc_coords = all_coordinates_from_map(s_map)
+            r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
+            s_map.data[r > 1] = -1000
+        imsave(dir + '/soho_%d.jpg' % s_map.wavelength.value, cmap(norm(s_map.data))[..., :-1], check_contrast=False)
+    for i, (s_map, cmap, norm) in enumerate(zip(iti_cube, cmaps,
+                                 [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304], sdo_norms['mag']])):
+        cmap = get_cmap(cmap) if isinstance(cmap, str) else cmap
+        s_map = s_map.rotate(recenter=True)
+        bl = SkyCoord(-pos * u.arcsec, -pos * u.arcsec, frame=s_map.coordinate_frame)
+        tr = SkyCoord(pos * u.arcsec, pos * u.arcsec, frame=s_map.coordinate_frame)
+        s_map = s_map.submap(bl, top_right=tr)
+        if i == 4:
+            hpc_coords = all_coordinates_from_map(s_map)
+            r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
+            s_map.data[r > 1] = -1000
+        imsave(dir + '/iti_%d.jpg' % s_map.wavelength.value, cmap(norm(s_map.data))[..., :-1], check_contrast=False)

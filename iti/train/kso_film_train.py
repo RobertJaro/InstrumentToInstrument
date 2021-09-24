@@ -13,7 +13,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/film_v7"
+base_dir = "/gss/r.jarolim/iti/film_v9"
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 resolution = 512
@@ -32,8 +32,8 @@ trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-ccd_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution)
-film_dataset = KSOFilmDataset("/gss/r.jarolim/data/filtered_kso_plate", resolution)
+ccd_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution, months=list(range(12)))
+film_dataset = KSOFilmDataset("/gss/r.jarolim/data/filtered_kso_plate", resolution, months=list(range(12)))
 ccd_storage = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution,
                              ext_editors=[RandomPatchEditor((256, 256))])
 film_storage = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution,

@@ -342,7 +342,7 @@ class ValidationHistoryCallback(Callback):
         plt.close()
 
 class ProgressCallback(Callback):
-    def __init__(self, trainer: Trainer, log_iteration=1):
+    def __init__(self, trainer: Trainer, log_iteration=10):
         self.trainer = trainer
         super().__init__(log_iteration)
 

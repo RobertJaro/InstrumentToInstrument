@@ -1,5 +1,4 @@
 import logging
-import logging
 import os
 from datetime import datetime
 from random import randint
@@ -286,7 +285,7 @@ class Trainer(nn.Module):
             self.valid_loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
         self.train()
 
-    def fill_stack(self,  x_a, x_b):
+    def fill_stack(self, x_a, x_b):
         self.eval()
         with torch.no_grad():
             n_gen = self.generateNoise(x_b)
@@ -368,6 +367,46 @@ class Trainer(nn.Module):
             if isinstance(module, InstanceNorm2d):
                 module.momentum = momentum
 
+    def startBasicTraining(self, base_dir, ds_A, ds_B, ds_valid_A=None, ds_valid_B=None, iterations=int(1e8)):
+        self.cuda()
+        self.train()
+        start_it = self.resume(base_dir)
+        # Init Callbacks
+        from iti.evaluation.callback import HistoryCallback, ProgressCallback, SaveCallback, PlotBAB, PlotABA, ValidationHistoryCallback
+        history_callback = HistoryCallback(self, base_dir)
+        progress_callback = ProgressCallback(self)
+        save_callback = SaveCallback(self, base_dir)
+        callbacks = [history_callback, progress_callback, save_callback]
+        if ds_valid_B is not None or ds_valid_A is not None:
+            prediction_dir = os.path.join(base_dir, 'prediction')
+            os.makedirs(prediction_dir, exist_ok=True)
+        if ds_valid_B is not None:
+            callbacks += [PlotBAB(ds_valid_B.sample(4), self, prediction_dir, log_iteration=1000)]
+        if ds_valid_A is not None:
+            callbacks += [PlotABA(ds_valid_A.sample(4), self, prediction_dir, log_iteration=1000)]
+        if ds_valid_B is not None and ds_valid_A is not None:
+            callbacks += [ValidationHistoryCallback(self, ds_valid_A, ds_valid_B, base_dir, 1000)]
+        # init data loaders
+        B_iterator = loop(DataLoader(ds_B, batch_size=1, shuffle=True, num_workers=8))
+        A_iterator = loop(DataLoader(ds_A, batch_size=1, shuffle=True, num_workers=8))
+        # start update cycle
+        for it in range(start_it, iterations):
+            if it > 100000:
+                self.gen_ab.eval()  # fix running stats
+                self.gen_ba.eval()  # fix running stats
+            #
+            x_a, x_b = next(A_iterator), next(B_iterator)
+            x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
+            self.discriminator_update(x_a, x_b)
+            #
+            x_a, x_b = next(A_iterator), next(B_iterator)
+            x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
+            self.generator_update(x_a, x_b)
+            torch.cuda.synchronize()
+            #
+            for callback in callbacks:
+                callback(it)
+
 
 def convertSet(data_set, store_path):
     loader = DataLoader(data_set, batch_size=1, shuffle=False, num_workers=16)
@@ -384,6 +423,19 @@ def loop(iterable):
         except StopIteration:
             it = iterable.__iter__()
             yield it.next()
+        except Exception as ex:
+            logging.error(str(ex))
+            continue
+
+
+def skip_invalid(iterable):
+    it = iterable.__iter__()
+    #
+    while True:
+        try:
+            yield it.next()
+        except StopIteration as ex:
+            return
         except Exception as ex:
             logging.error(str(ex))
             continue

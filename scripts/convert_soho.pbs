@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -l nodes=1:ppn=4:gpus=1
+#PBS -l nodes=1:ppn=8:gpus=1
 #PBS -l mem=128GB
 #PBS -l walltime=48:00:00
 #PBS -q gpgpu

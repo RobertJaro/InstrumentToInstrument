@@ -228,6 +228,40 @@ class Discriminator(nn.Module):
             input_fake = self.downsample(input_fake)
         return torch.mean(torch.stack(loss, 1), 1)
 
+    def calc_content_map(self, input_real, input_fake, skip_last=1):
+        loss = []
+        for i in range(self.num_scales):
+            # content loss of combined discriminator
+            x = input_real
+            y = input_fake
+            for j, layer in enumerate(self.discs[i][:-skip_last]):
+                up = nn.UpsamplingBilinear2d(scale_factor=2 ** (i + j + 1))
+                x = layer(x)
+                y = layer(y)
+                if j == 0: # skip first layer (no normalization)
+                    continue
+                diff = torch.abs(x - y)
+                diff = torch.mean(diff, 1).unsqueeze(1)
+                loss.append(up(diff))
+
+            # content loss of channel discriminator
+            for j, discs in enumerate(self.channel_discs.values()):
+                up = nn.UpsamplingBilinear2d(scale_factor=2 ** (i + j + 1))
+                x = input_real[:, j:j + 1]
+                y = input_fake[:, j:j + 1]
+                for k, layer in enumerate(discs[i][:-skip_last]):
+                    x = layer(x)
+                    y = layer(y)
+                    if k == 0:  # skip first layer (no normalization)
+                        continue
+                    diff = torch.abs(x - y)
+                    diff = torch.mean(diff, 1).unsqueeze(1)
+                    loss.append(up(diff))
+
+            input_real = self.downsample(input_real)
+            input_fake = self.downsample(input_fake)
+        return torch.mean(torch.cat(loss, 1), 1).unsqueeze(1)
+
 
 ########################## Encoder / Decoder ##########################
 

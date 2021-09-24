@@ -3,7 +3,7 @@ import os
 
 import torch
 
-from iti.data.editor import RandomPatchEditor
+from iti.data.editor import RandomPatchEditor, BrightestPixelPatchEditor
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -14,7 +14,7 @@ from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCa
     SaveCallback
 from iti.train.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/kso_quality_1024_v5"
+base_dir = "/gss/r.jarolim/iti/kso_quality_1024_v8"
 resolution = 1024
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
@@ -32,15 +32,15 @@ trainer.cuda()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-q1_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution)
+q1_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution, months=list(range(11)))
 q1_storage = StorageDataset(q1_dataset,
                             '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution,
-                            ext_editors=[RandomPatchEditor((256, 256))])
+                            ext_editors=[BrightestPixelPatchEditor((256, 256), random_selection=0.8)])
 
-q2_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_general/quality2", resolution)
+q2_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_general/quality2", resolution, months=list(range(11)))
 q2_storage = StorageDataset(q2_dataset,
                             '/gss/r.jarolim/data/converted/iti/kso_q2_flat_%d' % resolution,
-                            ext_editors=[RandomPatchEditor((256, 256))])
+                            ext_editors=[BrightestPixelPatchEditor((256, 256), random_selection=0.8)])
 
 q1_fulldisc = StorageDataset(q1_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution)
 q2_fulldisc = StorageDataset(q2_dataset, '/gss/r.jarolim/data/converted/iti/kso_q2_flat_%d' % resolution)

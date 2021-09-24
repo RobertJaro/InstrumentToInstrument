@@ -6,22 +6,23 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from iti.data.dataset import KSODataset
+from iti.data.dataset import KSOFlatDataset
 from iti.train.trainer import Trainer
 
 import numpy as np
 
-resolution = 256
-base_path = "/gss/r.jarolim/iti/kso_quality_256_v11"
+resolution = 1024
+base_path = "/gss/r.jarolim/iti/kso_quality_1024_v7"
+epoch = 140000
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 
-q1_dataset = KSODataset("/gss/r.jarolim/data/kso_general/quality1", resolution)
+q1_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution)
 q1_loader = DataLoader(q1_dataset, batch_size=4, shuffle=True)
 q1_iter = q1_loader.__iter__()
 
-trainer = Trainer(1, 1, norm='in_aff')
+trainer = Trainer(1, 1)
+trainer.resume(checkpoint_dir=base_path, epoch=epoch)
 trainer.cuda()
-iteration = trainer.resume(base_path, epoch=40000)
 
 with torch.no_grad():
     #
@@ -39,5 +40,7 @@ for i in range(BA_imgs.shape[0]):
         axs[i, j + 1].imshow(BA_imgs[i, j], cmap='gray', )
 
 plt.tight_layout()
-plt.savefig(os.path.join(base_path, 'evaluation/variation_%d.jpg' % iteration), dpi=300)
+plt.savefig(os.path.join(base_path, 'evaluation/variation_%d.jpg' % epoch), dpi=300)
 plt.close()
+
+os.path.join(base_path, 'generator_AB.pt')

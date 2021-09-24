@@ -1,0 +1,8 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=4:gpus=1
+#PBS -l mem=32GB
+#PBS -l walltime=06:00:00
+#PBS -q gpgpu
+
+cd /home/r.jarolim/projects/InstrumentToInstrument
+python -m iti.evaluation.fid_soho

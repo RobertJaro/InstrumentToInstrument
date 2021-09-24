@@ -21,7 +21,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 # init
-base_path = "/gss/r.jarolim/iti/stereo_v6"
+base_path = "/gss/r.jarolim/iti/stereo_v7"
 prediction_path = os.path.join(base_path, 'series')
 os.makedirs(prediction_path, exist_ok=True)
 # create translator

@@ -196,7 +196,7 @@ class ExpandDimsEditor(Editor):
         self.axis = axis
 
     def call(self, data, **kwargs):
-        return np.expand_dims(data, axis=self.axis)
+        return np.expand_dims(data, axis=self.axis).astype(np.float32)
 
 
 class NanEditor(Editor):
@@ -217,7 +217,7 @@ class KSOPrepEditor(Editor):
     def call(self, kso_map, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # ignore warnings
-            kso_map.meta["waveunit"] = "ag"
+            kso_map.meta["waveunit"] = "AA"
             kso_map.meta["arcs_pp"] = kso_map.scale[0].value
             if 'exptime' not in kso_map.meta and 'exp_time' in kso_map.meta:
                 kso_map.meta['exptime'] = kso_map.meta['exp_time'] / 1000 # ms to s
@@ -297,19 +297,27 @@ class NormalizeRadiusEditor(Editor):
         r_obs_pix = (1 + self.padding_factor) * r_obs_pix
         scale_factor = self.resolution / (2 * r_obs_pix.value)
         s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
-        s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=3)
+        s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
         if self.crop:
             arcs_frame = (self.resolution / 2) * s_map.scale[0].value
-            s_map = s_map.submap(SkyCoord([-arcs_frame, arcs_frame] * u.arcsec,
-                                          [-arcs_frame, arcs_frame] * u.arcsec,
-                                          frame=s_map.coordinate_frame))
+            s_map = s_map.submap(bottom_left=SkyCoord(-arcs_frame * u.arcsec, -arcs_frame * u.arcsec, frame=s_map.coordinate_frame),
+                                 top_right=SkyCoord(arcs_frame * u.arcsec, arcs_frame * u.arcsec, frame=s_map.coordinate_frame))
             pad_x = s_map.data.shape[0] - self.resolution
             pad_y = s_map.data.shape[1] - self.resolution
-            s_map = s_map.submap([pad_x // 2, pad_y // 2] * u.pix,
-                                 [pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
+            s_map = s_map.submap(bottom_left=[pad_x // 2, pad_y // 2] * u.pix,
+                                 top_right=[pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
         s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
         return s_map
 
+class RecenterEditor(Editor):
+
+    def __init__(self, missing=0, order=4, **kwargs):
+        self.missing = missing
+        self.order = order
+        super().__init__(**kwargs)
+
+    def call(self, s_map, **kwargs):
+        return s_map.rotate(recenter=True, missing=self.missing, order=self.order)
 
 class ScaleEditor(Editor):
     def __init__(self, arcspp):

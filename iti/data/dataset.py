@@ -17,8 +17,8 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     MapToDataEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
-    PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, ContrastNormalizeEditor, \
-    hinode_norms, gregor_norms, LoadGregorGBandEditor, DistributeEditor
+    PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
+    LoadGregorGBandEditor, DistributeEditor, RecenterEditor
 
 
 class Norm(Enum):
@@ -30,11 +30,16 @@ class Norm(Enum):
 
 class BaseDataset(Dataset):
 
-    def __init__(self, data: Union[str, list], editors: List[Editor], ext: str = None, limit: int = None, **kwargs):
+    def __init__(self, data: Union[str, list], editors: List[Editor], ext: str = None, limit: int = None,
+                 months: list = None, date_parser=None, **kwargs):
         if isinstance(data, str):
             pattern = '*' if ext is None else '*' + ext
             data = sorted(glob.glob(os.path.join(data, "**", pattern), recursive=True))
         assert isinstance(data, Iterable), 'Dataset requires list of samples or path to files!'
+        if months:  # assuming filename is parsable datetime
+            if date_parser is None:
+                date_parser = lambda f: parse(os.path.basename(f).split('.')[0])
+            data = [d for d in data if date_parser(d).month in months]
         if limit is not None:
             data = random.sample(list(data), limit)
         self.data = data
@@ -94,7 +99,7 @@ class StackDataset(BaseDataset):
         basenames = sorted(list(basenames))  # matched by sorting
         if n_samples:
             basenames = basenames[::len(basenames) // n_samples]
-        for data_set in data_sets: # remove invalid files
+        for data_set in data_sets:  # remove invalid files
             data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in basenames])
 
         self.basenames = basenames
@@ -182,30 +187,34 @@ class KSODataset(BaseDataset):
 
 class KSOFlatDataset(BaseDataset):
 
-    def __init__(self, data, resolution=256, ext="*.fts.gz", **kwargs):
+    def __init__(self, data, resolution=256, ext="*.fts.gz", date_parser=None, **kwargs):
         editors = [LoadMapEditor(),
                    KSOPrepEditor(),
                    NormalizeRadiusEditor(resolution, 0),
                    LimbDarkeningCorrectionEditor(),
                    MapToDataEditor(),
-                   ImageNormalizeEditor(0.85, 1.6, stretch=AsinhStretch(0.1)),
+                   ImageNormalizeEditor(0.65, 1.5, stretch=AsinhStretch(0.5)),
                    NanEditor(-1),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(data, editors=editors, ext=ext, **kwargs)
+        if date_parser is None:
+            date_parser = lambda f: parse(os.path.basename(f)[14:-7].replace('_', 'T'))
+        super().__init__(data, editors=editors, ext=ext, date_parser=date_parser, **kwargs)
 
 
 class KSOFilmDataset(BaseDataset):
 
-    def __init__(self, data, resolution=256, ext="*.fts.gz", **kwargs):
+    def __init__(self, data, resolution=256, ext="*.fts.gz", date_parser=None, **kwargs):
         editors = [LoadFITSEditor(),
                    KSOFilmPrepEditor(),
                    NormalizeRadiusEditor(resolution, 0),
                    LimbDarkeningCorrectionEditor(),
                    MapToDataEditor(),
-                   ImageNormalizeEditor(0.85, 1.6, stretch=AsinhStretch(0.1)),
+                   ImageNormalizeEditor(0.39, 1.94, stretch=AsinhStretch(0.5)),
                    NanEditor(-1),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(data, editors=editors, ext=ext, **kwargs)
+        if date_parser is None:
+            date_parser = lambda f: parse(os.path.basename(f)[-22:-7].replace('_', 'T'))
+        super().__init__(data, editors=editors, ext=ext, date_parser=date_parser, **kwargs)
 
 
 class SDODataset(StackDataset):
@@ -224,19 +233,17 @@ class SDODataset(StackDataset):
 
 class SOHODataset(StackDataset):
 
-    def __init__(self, path, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
-        dirs = ['171', '195', '284', '304', 'mag', ]
-        instrument_files = [glob.glob(os.path.join(path, dir, '*' + ext)) for dir in dirs]
-        data_sets = [EITDataset(instrument_files[0], 171, resolution=resolution, ext=ext),
-                     EITDataset(instrument_files[1], 195, resolution=resolution, ext=ext),
-                     EITDataset(instrument_files[2], 284, resolution=resolution, ext=ext),
-                     EITDataset(instrument_files[3], 304, resolution=resolution, ext=ext),
-                     MDIDataset(instrument_files[4], resolution=resolution, ext=ext)
-                     ]
+    def __init__(self, path, patch_shape=None, resolution=1024, ext='.fits', wavelengths=None, **kwargs):
+        wavelengths = [171, 195, 284, 304, 'mag', ] if wavelengths is None else wavelengths
+        instrument_files = [glob.glob(os.path.join(path, str(dir), '*' + ext)) for dir in wavelengths]
+        ds = {171: EITDataset, 195: EITDataset, 284: EITDataset, 304: EITDataset, 'mag': MDIDataset}
+        data_sets = [ds[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                     for wl_id, files in zip(wavelengths, instrument_files)]
 
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
+
 
 class SOHOHMIDataset(BaseDataset):
 
@@ -244,7 +251,7 @@ class SOHOHMIDataset(BaseDataset):
         basenames_soho = [[os.path.basename(f) for f in glob.glob('%s/%s/*.fits' % (soho_ds_path, wl))] for wl in
                           ['171', '195', '284', '304']]
         basenames_soho = sorted(set(basenames_soho[0]).intersection(*basenames_soho[1:]))
-        soho_dates = np.array(sorted([parse(f.split('.')[0]) for f in basenames_soho]))
+        soho_dates = np.array([parse(f.split('.')[0]) for f in basenames_soho])
 
         hmi_files = sorted(glob.glob('%s/*.fits' % hmi_ds_path))
         hmi_files = np.array(hmi_files)
@@ -274,6 +281,7 @@ class SOHOHMIDataset(BaseDataset):
 
     def getId(self, idx):
         return self.basenames[idx].split('.')[0]
+
 
 class STEREODataset(StackDataset):
 
@@ -395,6 +403,7 @@ class HMIContinuumDataset(BaseDataset):
         norm = sdo_norms['continuum']
 
         editors = [LoadMapEditor(),
+                   RecenterEditor(),
                    ScaleEditor(0.6),
                    FeaturePatchEditor(patch_shape) if patch_shape is not None else PassEditor(),
                    MapToDataEditor(),

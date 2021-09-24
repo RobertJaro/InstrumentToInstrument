@@ -97,5 +97,6 @@ class HMIContinuumDownloader:
 
 if __name__ == '__main__':
     fetcher = HMIContinuumDownloader(ds_path="/gss/r.jarolim/data/hmi_continuum")
-    fetcher.fetchDates([datetime(2010, 3, 29) + i * timedelta(days=1) for i in
-                        range((datetime.now() - datetime(2010, 3, 29)) // timedelta(days=1))])
+    # fetcher.fetchDates([datetime(2010, 3, 29) + i * timedelta(days=1) for i in
+    #                     range((datetime.now() - datetime(2010, 3, 29)) // timedelta(days=1))])
+    fetcher.fetchDates([datetime(2014, 12, 22)])
