@@ -1,6 +1,6 @@
 import glob
 import os
-from datetime import timedelta, datetime
+from datetime import timedelta
 from warnings import simplefilter
 
 from aiapy.calibrate import correct_degradation
@@ -10,7 +10,7 @@ from dateutil.parser import parse
 from matplotlib.cm import get_cmap
 from skimage.io import imsave
 from sunpy.map import Map, all_coordinates_from_map
-from sunpy.map.sources import AIAMap, MDIMap
+from sunpy.map.sources import AIAMap
 from sunpy.visualization.colormaps import cm
 from tqdm import tqdm
 
@@ -18,13 +18,13 @@ from iti.data.editor import sdo_norms, soho_norms, get_local_correction_table
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from iti.prediction.translate import SOHOToSDO
+from iti.translate import SOHOToSDO
 
 import numpy as np
 
 # init
 base_path = "/gss/r.jarolim/iti/soho_sdo_v25"
-prediction_path = os.path.join(base_path, 'evaluation')
+prediction_path = os.path.join(base_path, 'compare')
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
 translator = SOHOToSDO(model_path=os.path.join(base_path, 'generator_AB.pt'))

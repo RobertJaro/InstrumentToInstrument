@@ -1,22 +1,20 @@
 import datetime
-import gc
 import os
-from multiprocessing import Pool
 
 import pandas
 import torch
 from dateutil.parser import parse
 from iti.data.editor import soho_norms, sdo_norms, stereo_norms
 
-from iti.data.dataset import SOHODataset, STEREODataset, SDODataset, SOHOHMIDataset
+from iti.data.dataset import SOHODataset, STEREODataset, SDODataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.prediction.translate import SOHOToSDO, STEREOToSDO, SOHOToSDOEUV
+from iti.translate import SOHOToSDOEUV
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from iti.prediction.translate import SOHOToSDO, STEREOToSDO
+from iti.translate import STEREOToSDO
 
 from matplotlib import pyplot as plt
 

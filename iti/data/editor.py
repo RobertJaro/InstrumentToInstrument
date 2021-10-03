@@ -381,8 +381,8 @@ class StackEditor(Editor):
     def __init__(self, data_sets):
         self.data_sets = data_sets
 
-    def call(self, data, **kwargs):
-        results = [dp.getIndex(data) for dp in self.data_sets]
+    def call(self, idx, **kwargs):
+        results = [dp.getIndex(idx) for dp in self.data_sets]
         return np.concatenate([img for img, kwargs in results], 0), {'kwargs_list': [kwargs for img, kwargs in results]}
 
 class DistributeEditor(Editor):

@@ -2,24 +2,21 @@ import glob
 
 import os
 
-from astropy.visualization import ImageNormalize
 from scipy.fftpack import fft2, fftshift
 from skimage.metrics import structural_similarity
-
-from iti.data.dataset import KSOFlatDataset
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 from sunpy.map import Map
 
-from iti.prediction.translate import KSOLowToHigh, KSOFlatConverter
+from iti.translate import KSOLowToHigh, KSOFlatConverter
 
 from matplotlib import pyplot as plt
 import numpy as np
 
 # init
 base_path = '/gss/r.jarolim/iti/kso_quality_1024_v6'
-prediction_path = os.path.join(base_path, 'translation')
+prediction_path = os.path.join(base_path, 'compare')
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
 translator = KSOLowToHigh(resolution=1024, model_path=os.path.join(base_path, 'generator_AB.pt'))

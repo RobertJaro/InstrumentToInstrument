@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from iti.prediction.translate import SOHOToSDOEUV
+from iti.translate import SOHOToSDOEUV
 
 # init
 base_path = "/gss/r.jarolim/iti/soho_sdo_euv_v1"

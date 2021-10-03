@@ -1,16 +1,13 @@
 import logging
 import multiprocessing
 import os
-import threading
-from datetime import timedelta, datetime
-from multiprocessing.queues import JoinableQueue
-from urllib import request
+from datetime import datetime
+from urllib.request import urlopen
 
 import drms
 import numpy as np
 import pandas as pd
-from astropy.io import fits
-from dateutil.parser import parse
+from astropy.io.fits import HDUList
 from sunpy.map import Map
 
 
@@ -20,6 +17,7 @@ class HMIContinuumDownloader:
         self.series = series
         self.ignore_quality = ignore_quality
         self.ds_path = ds_path
+        self.n_workers = num_worker_threads
         os.makedirs(ds_path, exist_ok=True)
 
         logging.basicConfig(
@@ -30,59 +28,47 @@ class HMIContinuumDownloader:
             ])
 
         self.drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
-        self.download_queue = JoinableQueue(ctx=multiprocessing.get_context())
-        for i in range(num_worker_threads):
-            t = threading.Thread(target=self.download_worker)
-            t.start()
 
-    def download_worker(self):
-        while True:
-            header, segment, t = self.download_queue.get()
-            logging.info('Download: %s (%d remaining)' % (header['DATE__OBS'], self.download_queue.qsize()))
-            try:
-                dir = os.path.join(self.ds_path, '%d' % header['WAVELNTH'])
-                map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
-                if os.path.exists(map_path):
-                    self.download_queue.task_done()
-                    continue
-                # load map
-                url = 'http://jsoc.stanford.edu' + segment
-                file_path = os.path.join(self.ds_path, '%s') % segment[1:].replace('/', '-')
-                request.urlretrieve(url, filename=file_path)
-                hdul = fits.open(file_path)
-                hdul.verify('silentfix')
-                data = hdul[1].data
-                header = {k: v for k, v in header.items() if not pd.isna(v)}
-                header['DATE_OBS'] = header['DATE__OBS']
-                s_map = Map(data, header)
-                os.makedirs(dir, exist_ok=True)
-                map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
-                if os.path.exists(map_path):
-                    os.remove(map_path)
-                s_map.save(map_path)
-                os.remove(file_path)
-                self.download_queue.task_done()
-            except Exception as ex:
-                logging.info('Download failed: %s (requeue)' % header['DATE__OBS'])
-                logging.info(ex)
-                self.download_queue.put((header, segment, t))
-                self.download_queue.task_done()
-                continue
+    def download(self, data):
+        header, segment, t = data
+        dir = os.path.join(self.ds_path, '%d' % header['WAVELNTH'])
+        map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
+        if os.path.exists(map_path):
+            return map_path
+        # load map
+        url = 'http://jsoc.stanford.edu' + segment
+        with urlopen(url) as url_request:
+            fits_data = url_request.read()
+        hdul = HDUList.fromstring(fits_data)
+        hdul.verify('silentfix')
+        data = hdul[1].data
+        header = {k: v for k, v in header.items() if not pd.isna(v)}
+        header['DATE_OBS'] = header['DATE__OBS']
+        s_map = Map(data, header)
+        os.makedirs(dir, exist_ok=True)
+        map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
+        if os.path.exists(map_path):
+            os.remove(map_path)
+        s_map.save(map_path)
+        return map_path
 
     def fetchDates(self, dates):
+        header_info = []
+        logging.info('Fetch header information')
         for date in dates:
             try:
-                self.fetchData(date)
+                header_info += self.fetchData(date)
             except Exception as ex:
                 print(ex)
                 logging.error('Unable to download: %s' % date.isoformat())
-        self.download_queue.join()
+
+        logging.info('Download data')
+        with multiprocessing.Pool(self.n_workers) as p:
+            files = p.map(self.download, header_info)
+        return files
 
     def fetchData(self, time):
-        id = time.isoformat()
-
-        logging.info('Start download: %s' % id)
-        # query continuum
+        # query
         time_param = '%sZ' % time.isoformat('_', timespec='seconds')
         ds_hmi = '%s[%s]{continuum}' % (self.series, time_param)
         keys_hmi = self.drms_client.keys(ds_hmi)
@@ -90,10 +76,9 @@ class HMIContinuumDownloader:
         if len(header_hmi) != 1 or (np.any(header_hmi.QUALITY != 0) and not self.ignore_quality):
             raise Exception('No valid data found!')
 
-        for (idx, h), s in zip(header_hmi.iterrows(), segment_hmi.continuum):
-            self.download_queue.put((h.to_dict(), s, time))
+        data = [(h.to_dict(), s, time) for (idx, h), s in zip(header_hmi.iterrows(), segment_hmi.continuum)]
+        return data
 
-        logging.info('Finished: %s' % id)
 
 if __name__ == '__main__':
     fetcher = HMIContinuumDownloader(ds_path="/gss/r.jarolim/data/hmi_continuum")

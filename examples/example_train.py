@@ -1,6 +1,6 @@
 from iti.data.dataset import SDODataset, SOHODataset
 from iti.train.model import DiscriminatorMode
-from iti.train.trainer import Trainer
+from iti.trainer import Trainer
 
 base_dir = "/gss/r.jarolim/iti/soho_to_sdo"
 sdo_data_path = "/gss/r.jarolim/data/ch_detection"

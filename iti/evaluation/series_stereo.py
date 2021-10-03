@@ -1,10 +1,7 @@
 import glob
 import os
-from datetime import datetime
 
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
-from sunpy.coordinates import Helioprojective
 from sunpy.map import Map
 from sunpy.physics.differential_rotation import solar_rotate_coordinate
 from sunpy.visualization.colormaps import cm
@@ -14,11 +11,9 @@ from iti.data.editor import stereo_norms, sdo_norms
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from iti.prediction.translate import STEREOToSDO
+from iti.translate import STEREOToSDO
 
 from matplotlib import pyplot as plt
-
-import numpy as np
 
 # init
 base_path = "/gss/r.jarolim/iti/stereo_v7"

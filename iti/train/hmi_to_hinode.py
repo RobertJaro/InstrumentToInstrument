@@ -10,13 +10,17 @@ import torch
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import StorageDataset, HMIContinuumDataset, HinodeDataset
-from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
+from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer, loop
+from iti.trainer import Trainer, loop
 
 import pandas as pd
 
-base_dir = "/gss/r.jarolim/iti/hmi_hinode_v13"
+base_dir = "/gss/r.jarolim/iti/hmi_hinode_v12"
+hmi_path = '/gss/r.jarolim/data/hmi_continuum/6173'
+hmi_converted_path = '/gss/r.jarolim/data/converted/hmi_continuum'
+hinode_converted_path = '/gss/r.jarolim/data/converted/hinode_continuum'
+hinode_file_list = '/gss/r.jarolim/data/hinode/file_list.csv'
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -33,7 +37,7 @@ trainer.cuda()
 trainer.train()
 start_it = trainer.resume(base_dir)
 
-df = pd.read_csv('/gss/r.jarolim/data/hinode/file_list.csv', index_col=False, parse_dates=['date'])
+df = pd.read_csv(hinode_file_list, index_col=False, parse_dates=['date'])
 train_df = df[(df.date.dt.month != 12) & (df.date.dt.month != 11)]
 features = train_df[train_df.classification == 'feature']
 quiet = train_df[train_df.classification == 'quiet']
@@ -41,11 +45,11 @@ limb = train_df[train_df.classification == 'limb']
 hinode_files = list(features.file) + list(limb.file) + sample(list(quiet.file), len(features) + len(limb))
 
 # Init Dataset
-hmi_dataset = HMIContinuumDataset('/gss/r.jarolim/data/hmi_continuum/6173', (512, 512), months=list(range(11)))
-hmi_dataset = StorageDataset(hmi_dataset, '/gss/r.jarolim/data/converted/hmi_continuum',
+hmi_dataset = HMIContinuumDataset(hmi_path, (512, 512), months=list(range(11)))
+hmi_dataset = StorageDataset(hmi_dataset, hmi_converted_path,
                              ext_editors=[RandomPatchEditor((160, 160))])
 
-hinode_dataset = StorageDataset(HinodeDataset(hinode_files), '/gss/r.jarolim/data/converted/hinode_continuum',
+hinode_dataset = StorageDataset(HinodeDataset(hinode_files), hinode_converted_path,
                                 ext_editors=[RandomPatchEditor((640, 640))])
 
 hmi_iterator = loop(DataLoader(hmi_dataset, batch_size=1, shuffle=True, num_workers=8))
@@ -78,9 +82,6 @@ v_callback = VariationPlotBA(hinode_dataset.sample(4), trainer, prediction_dir, 
 
 callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
 
-# Init generator stack
-# trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),
-#                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
     if it > 100000:

@@ -1,18 +1,15 @@
 import logging
 import multiprocessing
 import os
-import threading
-import traceback
 from datetime import timedelta, datetime
-from multiprocessing.queues import JoinableQueue
 from urllib import request
 
 import drms
 import numpy as np
 import pandas as pd
 from astropy.io import fits
-from dateutil.parser import parse
 from sunpy.map import Map
+
 
 class SDODownloader:
 
@@ -134,7 +131,6 @@ class SDODownloader:
             header_euv.append(header_tmp.iloc[0].drop('date_diff'))
             segment_euv.append(segment_tmp.iloc[0].drop('date_diff'))
 
-
         queue = []
         queue += [(header_hmi.to_dict(), segment_hmi.magnetogram, date)]
         for h, s in zip(header_euv, segment_euv):
@@ -150,5 +146,5 @@ if __name__ == '__main__':
     downloader = SDODownloader(base_path="/gss/r.jarolim/data/ch_detection")
     start_date = datetime(2010, 5, 13)
     for d in [start_date + i * timedelta(days=1) for i in
-                           range((datetime.now() - start_date) // timedelta(days=1))]:
+              range((datetime.now() - start_date) // timedelta(days=1))]:
         downloader.downloadDate(d)

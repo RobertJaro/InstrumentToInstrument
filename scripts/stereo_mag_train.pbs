@@ -4,5 +4,5 @@
 #PBS -l walltime=48:00:00
 #PBS -q gpgpu
 
-cd /home/r.jarolim/projects/InstrumentToInstrument
-python -m iti.train.stereo_mag_train
+cd /gss/home/r.jarolim/projects/InstrumentToInstrument
+python -m iti.train.stereo_to_sdo_mag

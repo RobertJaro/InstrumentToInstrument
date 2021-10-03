@@ -12,16 +12,11 @@ from sunpy.map import Map, all_coordinates_from_map
 from sunpy.visualization.colormaps import cm
 from tqdm import tqdm
 
-from iti.prediction.translate import STEREOToSDOMagnetogram
-
-
-from astropy import units as u
+from iti.translate import STEREOToSDOMagnetogram
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 from matplotlib import pyplot as plt
-
-from iti.data.dataset import SOHODataset, STEREODataset
 
 import numpy as np
 

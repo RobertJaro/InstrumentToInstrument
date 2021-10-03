@@ -1,9 +1,7 @@
 import logging
 import os
 
-from astropy.visualization import AsinhStretch
 from sunpy.visualization.colormaps import cm
-from tqdm import tqdm
 
 from iti.data.editor import RandomPatchEditor, LambdaEditor, BrightestPixelPatchEditor, BlockReduceEditor
 from iti.train.model import DiscriminatorMode
@@ -14,12 +12,18 @@ import torch
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
-from iti.evaluation.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, \
+from iti.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer, loop
+from iti.trainer import Trainer, loop
 import numpy as np
 
 base_dir = "/gss/r.jarolim/iti/stereo_mag_v11"
+
+stereo_path = "/gss/r.jarolim/data/stereo_iti2021_prep"
+stereo_converted_path = '/gss/r.jarolim/data/converted/stereo_1024'
+sdo_path = "/gss/r.jarolim/data/ch_detection"
+sdo_converted_path = '/gss/r.jarolim/data/converted/sdo_2048'
+
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -36,26 +40,28 @@ trainer = Trainer(4, 5, upsampling=0, discriminator_mode=DiscriminatorMode.CHANN
 trainer.cuda()
 start_it = trainer.resume(base_dir)
 
+
 # Init Dataset
 def absolute_mag(data, **kwargs):
     data[-1] = np.abs(data[-1]) * 2 - 1
     return data
 
+
 abs_mag_editor = LambdaEditor(absolute_mag)
 block_reduce_editor = BlockReduceEditor(block_size=(1, 2, 2))
 
-sdo_train = SDODataset("/gss/r.jarolim/data/ch_detection", resolution=2048, patch_shape=(1024, 1024), months=list(range(11)))
-sdo_train = StorageDataset(sdo_train, '/gss/r.jarolim/data/converted/sdo_2048',
+sdo_train = SDODataset(sdo_path, resolution=2048, patch_shape=(1024, 1024), months=list(range(11)))
+sdo_train = StorageDataset(sdo_train, sdo_converted_path,
                            ext_editors=[RandomPatchEditor((512, 512)), block_reduce_editor, abs_mag_editor])
 
-stereo_train = STEREODataset("/gss/r.jarolim/data/stereo_iti2021_prep")
-stereo_train = StorageDataset(stereo_train, '/gss/r.jarolim/data/converted/stereo_1024',
+stereo_train = STEREODataset(stereo_path)
+stereo_train = StorageDataset(stereo_train, stereo_converted_path,
                               ext_editors=[BrightestPixelPatchEditor((512, 512)), RandomPatchEditor((256, 256))])
 
-sdo_valid = SDODataset("/gss/r.jarolim/data/ch_detection", resolution=2048)
+sdo_valid = SDODataset(sdo_path, resolution=2048)
 sdo_valid.addEditor(block_reduce_editor)
 sdo_valid.addEditor(abs_mag_editor)
-stereo_valid = STEREODataset("/gss/r.jarolim/data/stereo_iti2021_prep")
+stereo_valid = STEREODataset(stereo_path)
 
 sdo_iterator = loop(DataLoader(sdo_train, batch_size=1, shuffle=True, num_workers=8))
 stereo_iterator = loop(DataLoader(stereo_train, batch_size=1, shuffle=True, num_workers=8))

@@ -12,10 +12,16 @@ import torch
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
-from iti.evaluation.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, SaveCallback
-from iti.train.trainer import Trainer, loop
+from iti.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, SaveCallback
+from iti.trainer import Trainer, loop
 
 base_dir = "/gss/r.jarolim/iti/stereo_v7"
+
+stereo_path = "/gss/r.jarolim/data/stereo_iti2021_prep"
+stereo_converted_path = '/gss/r.jarolim/data/converted/stereo_1024'
+sdo_path = "/gss/r.jarolim/data/ch_detection"
+sdo_valid_path = "/gss/r.jarolim/data/sdo/valid"
+
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -33,20 +39,22 @@ trainer.cuda()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-sdo_dataset = SDODataset("/gss/r.jarolim/data/ch_detection", resolution=4096, patch_shape=(1024, 1024), months=list(range(11)))
+
+sdo_dataset = SDODataset(sdo_path, resolution=4096, patch_shape=(1024, 1024), months=list(range(11)))
+sdo_converted_path = '/gss/r.jarolim/data/converted/sdo_4096'
 sdo_dataset = StorageDataset(sdo_dataset,
-                             '/gss/r.jarolim/data/converted/sdo_4096',
+                             sdo_converted_path,
                              ext_editors=[SliceEditor(0, -1),
                                           RandomPatchEditor((512, 512))])
 
-stereo_dataset = StorageDataset(STEREODataset("/gss/r.jarolim/data/stereo_iti2021_prep", months=list(range(11))),
-                                '/gss/r.jarolim/data/converted/stereo_1024',
+stereo_dataset = StorageDataset(STEREODataset(stereo_path, months=list(range(11))),
+                                stereo_converted_path,
                                 ext_editors=[BrightestPixelPatchEditor((256, 256)), RandomPatchEditor((128, 128))])
 
-sdo_valid = StorageDataset(SDODataset("/gss/r.jarolim/data/sdo/valid", resolution=4096, patch_shape=(1024, 1024), months=[11, 12]),
-                           '/gss/r.jarolim/data/converted/sdo_4096', ext_editors=[RandomPatchEditor((512, 512)), SliceEditor(0, -1)])
-stereo_valid = StorageDataset(STEREODataset("/gss/r.jarolim/data/stereo_iti2021_prep", patch_shape=(1024, 1024), months=[11, 12]),
-                              '/gss/r.jarolim/data/converted/stereo_1024', ext_editors=[RandomPatchEditor((128, 128))])
+sdo_valid = StorageDataset(SDODataset(sdo_valid_path, resolution=4096, patch_shape=(1024, 1024), months=[11, 12]),
+                           sdo_converted_path, ext_editors=[RandomPatchEditor((512, 512)), SliceEditor(0, -1)])
+stereo_valid = StorageDataset(STEREODataset(stereo_path, patch_shape=(1024, 1024), months=[11, 12]),
+                              stereo_converted_path, ext_editors=[RandomPatchEditor((128, 128))])
 
 sdo_iterator = loop(DataLoader(sdo_dataset, batch_size=1, shuffle=True, num_workers=8))
 stereo_iterator = loop(DataLoader(stereo_dataset, batch_size=1, shuffle=True, num_workers=8))
@@ -77,16 +85,16 @@ aba_callback = PlotABA(stereo_valid.sample(4), trainer, prediction_dir, log_iter
 bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-full_disc_aba_callback = PlotABA(STEREODataset("/gss/r.jarolim/data/stereo_iti2021_prep").sample(4),
+full_disk_aba_callback = PlotABA(STEREODataset(stereo_path).sample(4),
                                  trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
                                  plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
-                                 plot_id='full_disc_aba')
+                                 plot_id='FULL_ABA')
 
 aba_callback.call(0)
 bab_callback.call(0)
-full_disc_aba_callback.call(0)
+full_disk_aba_callback.call(0)
 
-callbacks = [history, progress, save, aba_callback, bab_callback, full_disc_aba_callback]
+callbacks = [history, progress, save, aba_callback, bab_callback, full_disk_aba_callback]
 
 # Start training
 for it in range(start_it, int(1e8)):

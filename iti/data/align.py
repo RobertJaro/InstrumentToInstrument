@@ -4,7 +4,6 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.nddata import block_reduce
-from matplotlib import pyplot as plt
 from skimage.util import view_as_windows
 from sunpy.map import Map
 
@@ -22,19 +21,12 @@ def alignMaps(align_map, ref_map):
     width = align_map.bottom_left_coord.Tx - align_map.top_right_coord.Tx
     height = align_map.bottom_left_coord.Ty - align_map.top_right_coord.Ty
     #
-    plt.imshow(align_map.data, cmap='gray')
-    plt.savefig('/gss/r.jarolim/iti/hmi_hinode_v12/compare/align.jpg')
-    plt.close()
-    #
     for fov, reduction_scale in zip([1.5, 1, 0.7, 0.51], [8, 4, 2, 1]):
         # initial align
         coord = align_map.center
         bl = SkyCoord(coord.Tx - width * fov, coord.Ty - height * fov, frame=ref_map.coordinate_frame)
         tr = SkyCoord(coord.Tx + width * fov, coord.Ty + height * fov, frame=ref_map.coordinate_frame)
         submap = ref_map.submap(bottom_left=bl, top_right=tr)
-        plt.imshow(submap.data, cmap='gray')
-        plt.savefig('/gss/r.jarolim/iti/hmi_hinode_v12/compare/ref_%f.jpg' % fov)
-        plt.close()
         #
         shift = getShift(align_map.data.astype(np.float32), submap.data.astype(np.float32),
                          reduction_block=(reduction_scale, reduction_scale))

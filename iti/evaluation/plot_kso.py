@@ -3,12 +3,11 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
-from matplotlib import pyplot as plt
 from skimage.io import imsave
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import KSODataset
-from iti.train.trainer import Trainer
+from iti.trainer import Trainer
 
 resolution = 256
 base_path = "/gss/r.jarolim/iti/kso_quality_256_v11"

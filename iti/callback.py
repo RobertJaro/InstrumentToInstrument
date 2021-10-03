@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.train.trainer import Trainer
+from iti.trainer import Trainer
 
 
 class Callback(ABC):

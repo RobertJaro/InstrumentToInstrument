@@ -17,19 +17,20 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 from matplotlib import pyplot as plt
 
 # init
-base_path = '/gss/r.jarolim/iti/kso_quality_1024_v6'
+base_path = '/gss/r.jarolim/iti/kso_quality_1024_v11'
 prediction_path = os.path.join(base_path, 'evaluation')
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
 map_files = list(glob.glob('/gss/r.jarolim/data/kso_general/quality2/*.fts.gz'))
-dates = [parse(os.path.basename(f).split('.')[0].replace('_', 'T')) for f in map_files]
+#date_parser = lambda f: parse(os.path.basename(f)[14:-7].replace('_', 'T'))
+#dates = [date_parser(f) for f in map_files]
 
 
 dataset = KSOFlatDataset(map_files, 1024, months=[11, 12])
 dataset.addEditor(AddRadialDistanceEditor())
 
 # ITI setup
-iti_model = torch.load('/gss/r.jarolim/iti/kso_quality_1024_v6/generator_AB.pt')
+iti_model = torch.load('/gss/r.jarolim/iti/kso_quality_1024_v11/generator_AB.pt')
 iti_model.eval()
 
 # SIQA Setup
@@ -67,13 +68,13 @@ with torch.no_grad():
                 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
                 ax.imshow(img_kso[0].detach().cpu().numpy(), cmap='gray', vmin=-1, vmax=1)
                 ax.set_axis_off()
-                fig.tight_layout(0)
+                plt.tight_layout(0)
                 fig.savefig(os.path.join(prediction_path, 'low_kso_%.03f.jpg' % l), dpi=100)
                 plt.close(fig)
                 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
                 ax.imshow(img_iti[0].detach().cpu().numpy(), cmap='gray', vmin=-1, vmax=1)
                 ax.set_axis_off()
-                fig.tight_layout(0)
+                plt.tight_layout(0)
                 fig.savefig(os.path.join(prediction_path, 'low_iti_%.03f.jpg' % l), dpi=100)
                 plt.close(fig)
 

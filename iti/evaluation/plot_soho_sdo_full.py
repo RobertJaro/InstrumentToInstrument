@@ -1,9 +1,6 @@
 import os
 
-from astropy.coordinates import SkyCoord
-from matplotlib.colors import Normalize
 from skimage.io import imsave
-from sunpy.map import Map
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -13,13 +10,9 @@ from sunpy.visualization.colormaps import cm
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SOHODataset
-from iti.data.editor import PaddingEditor, LoadMapEditor, NormalizeRadiusEditor
+from iti.data.editor import PaddingEditor
 from iti.train.model import DiscriminatorMode
-from iti.train.trainer import Trainer
-
-from astropy import units as u
-
-import numpy as np
+from iti.trainer import Trainer
 
 sdo_shape = 2048
 soho_shape = 1024

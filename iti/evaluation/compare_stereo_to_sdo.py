@@ -13,7 +13,7 @@ from astropy import units as u
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from iti.prediction.translate import STEREOToSDO
+from iti.translate import STEREOToSDO
 
 import numpy as np
 

@@ -17,7 +17,7 @@ from sunpy.visualization.colormaps import cm
 from tqdm import tqdm
 
 from iti.data.editor import sdo_norms, AIAPrepEditor
-from iti.prediction.translate import STEREOToSDO
+from iti.translate import STEREOToSDO
 
 wavelengths = [(171, 171), (195, 193,), (284, 211,), (304, 304,)]
 cmaps = [cm.sdoaia171, cm.sdoaia193, cm.sdoaia211, cm.sdoaia304]

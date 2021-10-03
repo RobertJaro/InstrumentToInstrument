@@ -2,15 +2,13 @@ import os
 
 import torch
 from pytorch_fid.fid_score import calculate_fid_given_paths
-from skimage.io import imsave
 from sklearn.externals._pilutil import toimage
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.data.dataset import KSOFlatDataset
 from iti.train.model import GeneratorAB
-from iti.train.trainer import Trainer, skip_invalid
+from iti.trainer import skip_invalid
 
 
 def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4, scale_factor=1):

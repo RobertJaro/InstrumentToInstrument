@@ -3,9 +3,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 
-from iti.train.model import DiscriminatorMode
-
-from iti.train.trainer import Trainer
+from iti.trainer import Trainer
 
 path = "/gss/r.jarolim/iti/hmi_hinode_v13"
 trainer = Trainer(1, 1, upsampling=2, norm='in_rs_aff', lambda_diversity=0)

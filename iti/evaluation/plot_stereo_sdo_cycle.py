@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset
 from iti.train.model import DiscriminatorMode
-from iti.train.trainer import Trainer
+from iti.trainer import Trainer
 
 import numpy as np
 

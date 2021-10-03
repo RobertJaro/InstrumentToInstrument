@@ -132,9 +132,10 @@ class GeneratorBA(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, input_dim, n_filters, num_scales=3, depth_discriminator=4,
                  discriminator_mode=DiscriminatorMode.SINGLE,
-                 norm='in_rs_aff'):
+                 norm='in_rs_aff', batch_statistic=False):
         self.pad_type = 'reflect'
         self.activ = 'relu'
+        self.batch_statistic = batch_statistic
         self.norm = norm
         self.depth_discriminator = depth_discriminator
         super().__init__()
@@ -165,6 +166,8 @@ class Discriminator(nn.Module):
         cnn_x = []
         cnn_x += [Conv2dBlock(input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
         for i in range(self.depth_discriminator - 1):
+            if self.batch_statistic:
+                cnn_x += [BatchStatistic()]
             cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
             dim *= 2
         cnn_x += [nn.Conv2d(dim, 1, 1, 1, 0)]
@@ -459,6 +462,13 @@ class SpectralNorm(nn.Module):
         self._update_u_v()
         return self.module.forward(*args)
 
+class BatchStatistic(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x + torch.mean(x, 0, keepdim=True) + torch.std(x, 0, keepdim=True)
 
 def l2normalize(v, eps=1e-12):
     return v / (v.norm() + eps)

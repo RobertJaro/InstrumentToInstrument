@@ -3,7 +3,7 @@ import os
 
 from sunpy.visualization.colormaps import cm
 
-from iti.data.editor import RandomPatchEditor, LambdaEditor
+from iti.data.editor import LambdaEditor
 from iti.train.model import DiscriminatorMode
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
@@ -12,12 +12,18 @@ import torch
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
-from iti.evaluation.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, \
+from iti.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer, loop
-import numpy as np
+from iti.trainer import Trainer, loop
 
 base_dir = "/gss/r.jarolim/iti/stereo_mag_v6"
+
+sdo_path = "/gss/r.jarolim/data/ch_detection"
+sdo_converted_path = '/gss/r.jarolim/data/converted/sdo_256_train'
+stereo_path = "/gss/r.jarolim/data/stereo_prep/train"
+stereo_converted_path = '/gss/r.jarolim/data/converted/stereo_256_train'
+
+
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -44,17 +50,16 @@ def scale_mag(data, **kwargs):
 
 scale_mag_editor = LambdaEditor(scale_mag)
 # Init Dataset
-sdo_dataset = SDODataset("/gss/r.jarolim/data/ch_detection", resolution=256)
-sdo_dataset = StorageDataset(sdo_dataset,
-                             '/gss/r.jarolim/data/converted/sdo_256_train', ext_editors=[scale_mag_editor])
+sdo_dataset = SDODataset(sdo_path, resolution=256, months=list(range(11)))
+sdo_dataset = StorageDataset(sdo_dataset,  sdo_converted_path, ext_editors=[scale_mag_editor])
 
-stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_prep/train", resolution=256)
-stereo_dataset = StorageDataset(stereo_dataset,
-                                '/gss/r.jarolim/data/converted/stereo_256_train')
 
-sdo_valid = SDODataset("/gss/r.jarolim/data/sdo/valid", resolution=256)
+stereo_dataset = STEREODataset(stereo_path, resolution=256, months=list(range(11)))
+stereo_dataset = StorageDataset(stereo_dataset, stereo_converted_path)
+
+sdo_valid = SDODataset(sdo_path, resolution=256, months=[11, 12])
 sdo_valid.addEditor(scale_mag_editor)
-stereo_valid = STEREODataset("/gss/r.jarolim/data/stereo_prep/valid", resolution=256)
+stereo_valid = STEREODataset(stereo_path, resolution=256, months=[11, 12])
 
 sdo_iterator = loop(DataLoader(sdo_dataset, batch_size=1, shuffle=True, num_workers=8))
 stereo_iterator = loop(DataLoader(stereo_dataset, batch_size=1, shuffle=True, num_workers=8))

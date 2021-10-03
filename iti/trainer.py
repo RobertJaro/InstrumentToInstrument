@@ -16,7 +16,8 @@ from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstima
 
 class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
-                 activation='tanh', norm='in_rs_aff', n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
+                 activation='tanh', norm='in_rs_aff', use_batch_statistic=False,
+                 n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
                  depth_generator=3, depth_discriminator=4, depth_noise=4,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
@@ -34,6 +35,7 @@ class Trainer(nn.Module):
         logging.info("Base Number of Filters:   %d" % n_filters)
         logging.info("Activation:   %s" % str(activation))
         logging.info("Normalization:   %s" % str(norm))
+        logging.info("Batch Statistic:   %s" % str(use_batch_statistic))
         logging.info("Learning Rate:   %f" % learning_rate)
         logging.info("Lambda Discriminator Loss:   %f" % lambda_discriminator)
         logging.info("Lambda Reconstruction Loss:   %f" % lambda_reconstruction)
@@ -72,10 +74,10 @@ class Trainer(nn.Module):
                                   pad_type='reflect')  # generator for domain b-->a
         self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators,
                                    depth_discriminator, discriminator_mode,
-                                   norm=norm)  # discriminator for domain a
+                                   norm=norm, batch_statistic=use_batch_statistic)  # discriminator for domain a
         self.dis_b = Discriminator(input_dim_b, n_filters // 2 ** upsampling, n_discriminators,
                                    depth_discriminator + upsampling, discriminator_mode,
-                                   norm=norm)  # discriminator for domain b
+                                   norm=norm, batch_statistic=use_batch_statistic)  # discriminator for domain b
         self.estimator_noise = NoiseEstimator(input_dim_a, n_filters, noise_dim,
                                               depth_noise, norm=norm, activation='relu', pad_type='reflect')
         self.downsample = nn.AvgPool2d(2 ** upsampling)
@@ -372,7 +374,7 @@ class Trainer(nn.Module):
         self.train()
         start_it = self.resume(base_dir)
         # Init Callbacks
-        from iti.evaluation.callback import HistoryCallback, ProgressCallback, SaveCallback, PlotBAB, PlotABA, ValidationHistoryCallback
+        from iti.callback import HistoryCallback, ProgressCallback, SaveCallback, PlotBAB, PlotABA, ValidationHistoryCallback
         history_callback = HistoryCallback(self, base_dir)
         progress_callback = ProgressCallback(self)
         save_callback = SaveCallback(self, base_dir)

@@ -3,11 +3,10 @@ import os
 from random import sample
 
 from astropy.coordinates import SkyCoord
-from astropy.visualization import ImageNormalize
 from dateutil.parser import parse
 from sunpy.map import Map
 
-from iti.prediction.translate import HMIToHinode
+from iti.translate import HMIToHinode
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
@@ -15,7 +14,7 @@ import numpy as np
 from skimage.io import imsave
 from astropy import units as u
 
-base_path = '/gss/r.jarolim/iti/hmi_hinode_v13'
+base_path = '/gss/r.jarolim/iti/hmi_hinode_v12'
 evaluation_path = os.path.join(base_path, 'evaluation')
 os.makedirs(evaluation_path, exist_ok=True)
 

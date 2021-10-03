@@ -1,11 +1,9 @@
-import datetime
 import os
 
 from astropy.coordinates import SkyCoord
 from sunpy.map import Map
 
-from iti.data.align import alignMaps
-from iti.prediction.translate import HMIToHinode
+from iti.translate import HMIToHinode
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 

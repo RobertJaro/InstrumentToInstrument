@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from iti.data.dataset import STEREODataset
 from iti.data.editor import PaddingEditor, LoadMapEditor, NormalizeRadiusEditor
 from iti.train.model import DiscriminatorMode
-from iti.train.trainer import Trainer
+from iti.trainer import Trainer
 
 import numpy as np
 from astropy import units as u

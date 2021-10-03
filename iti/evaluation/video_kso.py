@@ -6,13 +6,9 @@ from datetime import datetime
 from dateutil.parser import parse
 from tqdm import tqdm
 
-from iti.data.dataset import KSOFlatDataset
-
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
-from sunpy.map import Map
-
-from iti.prediction.translate import KSOLowToHigh
+from iti.translate import KSOLowToHigh
 
 from matplotlib import pyplot as plt
 import numpy as np

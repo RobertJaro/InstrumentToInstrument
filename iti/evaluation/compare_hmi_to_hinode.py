@@ -1,6 +1,6 @@
 import glob
 import os
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 from astropy.coordinates import SkyCoord
 from dateutil.parser import parse
@@ -12,7 +12,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 from sunpy.map import Map
 
 from iti.data.align import alignMaps
-from iti.prediction.translate import HMIToHinode
+from iti.translate import HMIToHinode
 from matplotlib import pyplot as plt
 
 import numpy as np
@@ -24,7 +24,7 @@ import matplotlib.gridspec as gridspec
 gridspec
 
 # Functions
-base_path = '/gss/r.jarolim/iti/hmi_hinode_v13'
+base_path = '/gss/r.jarolim/iti/hmi_hinode_v12'
 evaluation_path = os.path.join(base_path, "compare")
 data_path = '/gss/r.jarolim/data/hmi_hinode_comparison'
 os.makedirs(evaluation_path, exist_ok=True)

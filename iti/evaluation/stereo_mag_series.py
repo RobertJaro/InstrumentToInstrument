@@ -1,29 +1,23 @@
 import glob
 import os
-from datetime import timedelta, datetime
+from datetime import datetime
 
 from astropy.coordinates import SkyCoord
-from astropy.visualization import ImageNormalize, AsinhStretch
 from dateutil.parser import parse
-from skimage.io import imsave
 from sunpy.coordinates import Helioprojective
 from sunpy.physics.differential_rotation import solar_rotate_coordinate
 
-from iti.data.editor import sdo_norms
 from sunpy.map import Map, all_coordinates_from_map
 from sunpy.visualization.colormaps import cm
 from tqdm import tqdm
 
-from iti.prediction.translate import STEREOToSDOMagnetogram
+from iti.translate import STEREOToSDOMagnetogram
 
 from astropy import units as u
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 from matplotlib import pyplot as plt
-import matplotlib.gridspec as gridspec
-
-from iti.data.dataset import SOHODataset, STEREODataset
 
 import numpy as np
 

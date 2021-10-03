@@ -58,7 +58,6 @@ class InstrumentToInstrument:
                 else:
                     iti_img = self.generator(torch.tensor(padded_img).float().to(self.device).unsqueeze(0))
                     iti_img = iti_img[0].detach().cpu().numpy()
-            torch.cuda.synchronize()
             # unpad
             scaling = iti_img.shape[-1] / padded_img.shape[-1]
             iti_img = UnpaddingEditor([p * scaling for p in original_shape[1:]]).call(iti_img)
@@ -94,7 +93,7 @@ class InstrumentToInstrument:
         iti_patches = []
         with torch.no_grad():
             for patch in patches:
-                iti_patch = self.generator(torch.tensor(patch).float().cuda().unsqueeze(0))
+                iti_patch = self.generator(torch.tensor(patch).float().to(self.device).unsqueeze(0))
                 iti_patches.append(iti_patch[0].detach().cpu().numpy())
         #
         iti_patches = np.array(iti_patches)
@@ -108,9 +107,9 @@ class InstrumentToInstrument:
 
     def _getModelPath(self, model_name):
         model_path = os.path.join(Path.home(), 'iti', model_name)
+        os.makedirs(os.path.join(Path.home(), 'iti'), exist_ok=True)
         if not os.path.exists(model_path):
-            request.urlretrieve('http://kanzelhohe.uni-graz.at/solarnet-campaign/iti/' + model_name,
-                                filename=model_path)
+            request.urlretrieve('http://kanzelhohe.uni-graz.at/iti/' + model_name, filename=model_path)
         return model_path
 
     def _adjustMeta(self, meta, new_data, scale_factor):
@@ -153,7 +152,7 @@ class InstrumentConverter:
 
 class SOHOToSDO(InstrumentToInstrument):
 
-    def __init__(self, model_name='soho_to_sdo_v0_1.py', **kwargs):
+    def __init__(self, model_name='soho_to_sdo_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304], sdo_norms['mag']]
 
@@ -176,7 +175,7 @@ class SOHOToSDO(InstrumentToInstrument):
 
 class SOHOToSDOEUV(SOHOToSDO):
 
-    def __init__(self, model_name='soho_to_sdo_euv_v0_1.py', **kwargs):
+    def __init__(self, model_name='soho_to_sdo_euv_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
 
@@ -189,17 +188,20 @@ class SOHOToSDOEUV(SOHOToSDO):
 
 class STEREOToSDO(InstrumentToInstrument):
 
-    def __init__(self, model_name='stereo_to_sdo_v0_1.py', **kwargs):
+    def __init__(self, model_name='stereo_to_sdo_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
-    def translate(self, path, basenames=None):
+    def translate(self, path, basenames=None, return_arrays=False):
         soho_dataset = STEREODataset(path, basenames=basenames)
         for result, inputs, outputs in self._translateDataset(soho_dataset):
             norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
             result = [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instrument, wl))
                       for s_map, norm, instrument, wl in
                       zip(result, norms, ['AIA'] * 4, [171, 193, 211, 304])]
-            yield result, inputs, outputs
+            if return_arrays:
+                yield result, inputs, outputs
+            else:
+                yield result
 
     def toSDOMeta(self, meta, instrument, wl):
         new_meta = meta.copy()
@@ -213,17 +215,20 @@ class STEREOToSDO(InstrumentToInstrument):
 
 class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
-    def __init__(self, model_name='stereo_to_sdo_mag_v0_1.py', **kwargs):
+    def __init__(self, model_name='stereo_to_sdo_mag_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
-    def translate(self, path, basenames=None):
+    def translate(self, path, basenames=None, return_arrays=False):
         soho_dataset = STEREODataset(path, basenames=basenames)
         for result, inputs, outputs in self._translateDataset(soho_dataset):
             norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
             result = [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, 'AIA', wl))
                       for s_map, norm, wl in zip(result[:-1], norms, [171, 193, 211, 304])] + \
                      [self._createMagnetogramMap(result[-1].data, result[-1].meta)]
-            yield result, inputs, outputs
+            if return_arrays:
+                yield result, inputs, outputs
+            else:
+                yield result
 
     def _createMagnetogramMap(self, data, meta):
         s_map = Map((data + 1) / 2 * 1000, self.toSDOMeta(meta, 'HMI', 6173))
@@ -243,7 +248,7 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
 
 class KSOLowToHigh(InstrumentToInstrument):
-    def __init__(self, model_name='kso_low_to_high_v0_1.py', resolution=512, **kwargs):
+    def __init__(self, model_name='kso_low_to_high_v0_1.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
@@ -257,7 +262,7 @@ class KSOLowToHigh(InstrumentToInstrument):
 
 
 class KSOFilmToCCD(InstrumentToInstrument):
-    def __init__(self, model_name='kso_film_to_ccd_v0_1.py', resolution=512, **kwargs):
+    def __init__(self, model_name='kso_film_to_ccd_v0_1.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 

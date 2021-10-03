@@ -9,14 +9,21 @@ import torch
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import KSOFlatDataset, StorageDataset, KSOFilmDataset
-from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
+from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer, loop
+from iti.trainer import Trainer, loop
 
 base_dir = "/gss/r.jarolim/iti/film_v9"
+
+resolution = 512
+kso_path = "/gss/r.jarolim/data/kso_synoptic"
+film_path = "/gss/r.jarolim/data/filtered_kso_plate"
+kso_converted_path = '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution
+film_converted_path = '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution
+
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
-resolution = 512
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,15 +39,13 @@ trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-ccd_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution, months=list(range(12)))
-film_dataset = KSOFilmDataset("/gss/r.jarolim/data/filtered_kso_plate", resolution, months=list(range(12)))
-ccd_storage = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution,
-                             ext_editors=[RandomPatchEditor((256, 256))])
-film_storage = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution,
-                              ext_editors=[RandomPatchEditor((256, 256))])
+ccd_dataset = KSOFlatDataset(kso_path, resolution, months=list(range(12)))
+film_dataset = KSOFilmDataset(film_path, resolution, months=list(range(12)))
+ccd_storage = StorageDataset(ccd_dataset, kso_converted_path, ext_editors=[RandomPatchEditor((256, 256))])
+film_storage = StorageDataset(film_dataset, film_converted_path, ext_editors=[RandomPatchEditor((256, 256))])
 
-ccd_plot = StorageDataset(ccd_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution)
-film_plot = StorageDataset(film_dataset, '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution)
+ccd_plot = StorageDataset(ccd_dataset, kso_converted_path)
+film_plot = StorageDataset(film_dataset, film_converted_path)
 
 kso_ccd_iterator = loop(DataLoader(ccd_storage, batch_size=1, shuffle=True, num_workers=8))
 kso_film_iterator = loop(DataLoader(film_storage, batch_size=1, shuffle=True, num_workers=8))
@@ -50,8 +55,8 @@ history = HistoryCallback(trainer, base_dir)
 progress = ProgressCallback(trainer)
 save = SaveCallback(trainer, base_dir)
 
-plot_settings_A = {"cmap": "gray", "title": "Quality 2", 'vmin': -1, 'vmax': 1}
-plot_settings_B = {"cmap": "gray", "title": "Quality 1", 'vmin': -1, 'vmax': 1}
+plot_settings_A = {"cmap": "gray", "title": "Quality A", 'vmin': -1, 'vmax': 1}
+plot_settings_B = {"cmap": "gray", "title": "Quality B", 'vmin': -1, 'vmax': 1}
 
 log_iteration = 1000
 bab_callback = PlotBAB(ccd_plot.sample(3), trainer, prediction_dir, log_iteration=log_iteration,

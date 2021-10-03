@@ -88,28 +88,14 @@ class BaseDataset(Dataset):
 
 class StackDataset(BaseDataset):
 
-    def __init__(self, data_sets, basenames=None, months=None, years=None, n_samples=None, **kwargs):
-        if basenames is None:  # find intersecting filenames
-            basenames = [[os.path.basename(path) for path in data_set.data] for data_set in data_sets]
-            basenames = list(set(basenames[0]).intersection(*basenames))
-        if months:  # assuming filename is parsable datetime
-            basenames = [bn for bn in basenames if parse(bn.split('.')[0]).month in months]
-        if years:  # assuming filename is parsable datetime
-            basenames = [bn for bn in basenames if parse(bn.split('.')[0]).year in years]
-        basenames = sorted(list(basenames))  # matched by sorting
-        if n_samples:
-            basenames = basenames[::len(basenames) // n_samples]
-        for data_set in data_sets:  # remove invalid files
-            data_set.data = sorted([path for path in data_set.data if os.path.basename(path) in basenames])
-
-        self.basenames = basenames
+    def __init__(self, data_sets, limit=None, **kwargs):
         self.data_sets = data_sets
 
         editors = [StackEditor(data_sets)]
-        super().__init__(list(range(len(basenames))), editors, **kwargs)
+        super().__init__(list(range(len(data_sets[0]))), editors, limit=limit)
 
     def getId(self, idx):
-        return self.basenames[idx].split('.')[0]
+        return os.path.basename(self.data_sets[0].data[idx]).split('.')[0]
 
 
 class StorageDataset(Dataset):
@@ -166,65 +152,32 @@ class StorageDataset(Dataset):
                 continue
 
 
-class KSODataset(BaseDataset):
-
-    def __init__(self, data: Union[str, list], resolution=256, ext="*.fts.gz", limit=None):
-        if isinstance(data, str) and os.path.isdir(data):
-            map_paths = sorted(glob.glob(os.path.join(data, "**", ext), recursive=True))
-        else:
-            map_paths = data
-        if limit:
-            map_paths = random.sample(map_paths, limit)
-
-        editors = [LoadMapEditor(),
-                   KSOPrepEditor(),
-                   NormalizeRadiusEditor(resolution),
-                   MapToDataEditor(),
-                   ImageNormalizeEditor(0, 1000),
-                   ReshapeEditor((1, resolution, resolution))]
-        super().__init__(map_paths, editors=editors)
-
-
-class KSOFlatDataset(BaseDataset):
-
-    def __init__(self, data, resolution=256, ext="*.fts.gz", date_parser=None, **kwargs):
-        editors = [LoadMapEditor(),
-                   KSOPrepEditor(),
-                   NormalizeRadiusEditor(resolution, 0),
-                   LimbDarkeningCorrectionEditor(),
-                   MapToDataEditor(),
-                   ImageNormalizeEditor(0.65, 1.5, stretch=AsinhStretch(0.5)),
-                   NanEditor(-1),
-                   ReshapeEditor((1, resolution, resolution))]
-        if date_parser is None:
-            date_parser = lambda f: parse(os.path.basename(f)[14:-7].replace('_', 'T'))
-        super().__init__(data, editors=editors, ext=ext, date_parser=date_parser, **kwargs)
-
-
-class KSOFilmDataset(BaseDataset):
-
-    def __init__(self, data, resolution=256, ext="*.fts.gz", date_parser=None, **kwargs):
-        editors = [LoadFITSEditor(),
-                   KSOFilmPrepEditor(),
-                   NormalizeRadiusEditor(resolution, 0),
-                   LimbDarkeningCorrectionEditor(),
-                   MapToDataEditor(),
-                   ImageNormalizeEditor(0.39, 1.94, stretch=AsinhStretch(0.5)),
-                   NanEditor(-1),
-                   ReshapeEditor((1, resolution, resolution))]
-        if date_parser is None:
-            date_parser = lambda f: parse(os.path.basename(f)[-22:-7].replace('_', 'T'))
-        super().__init__(data, editors=editors, ext=ext, date_parser=date_parser, **kwargs)
+def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, ext=None, **kwargs):
+    pattern = '*' if ext is None else '*' + ext
+    basenames = [[os.path.basename(path) for path in glob.glob(os.path.join(path, d, '**', pattern), recursive=True)] for d in dirs]
+    basenames = list(set(basenames[0]).intersection(*basenames))
+    if months:  # assuming filename is parsable datetime
+        basenames = [bn for bn in basenames if parse(bn.split('.')[0]).month in months]
+    if years:  # assuming filename is parsable datetime
+        basenames = [bn for bn in basenames if parse(bn.split('.')[0]).year in years]
+    basenames = sorted(list(basenames))
+    if n_samples:
+        basenames = basenames[::len(basenames) // n_samples]
+    return [[os.path.join(path, dir, b) for b in basenames] for dir in dirs]
 
 
 class SDODataset(StackDataset):
 
-    def __init__(self, path, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
-        data_sets = [AIADataset(os.path.join(path, '171'), 171, resolution=resolution, ext=ext),
-                     AIADataset(os.path.join(path, '193'), 193, resolution=resolution, ext=ext),
-                     AIADataset(os.path.join(path, '211'), 211, resolution=resolution, ext=ext),
-                     AIADataset(os.path.join(path, '304'), 304, resolution=resolution, ext=ext),
-                     HMIDataset(os.path.join(path, '6173'), 'mag', resolution=resolution, ext=ext)
+    def __init__(self, data, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, ['171', '193', '211', '304', '6173'], ext=ext, **kwargs)
+        data_sets = [AIADataset(paths[0], 171, resolution=resolution),
+                     AIADataset(paths[1], 193, resolution=resolution),
+                     AIADataset(paths[2], 211, resolution=resolution),
+                     AIADataset(paths[3], 304, resolution=resolution),
+                     HMIDataset(paths[4], 'mag', resolution=resolution)
                      ]
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
@@ -233,110 +186,43 @@ class SDODataset(StackDataset):
 
 class SOHODataset(StackDataset):
 
-    def __init__(self, path, patch_shape=None, resolution=1024, ext='.fits', wavelengths=None, **kwargs):
+    def __init__(self, data, patch_shape=None, resolution=1024, ext='.fits', wavelengths=None, **kwargs):
         wavelengths = [171, 195, 284, 304, 'mag', ] if wavelengths is None else wavelengths
-        instrument_files = [glob.glob(os.path.join(path, str(dir), '*' + ext)) for dir in wavelengths]
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+
         ds = {171: EITDataset, 195: EITDataset, 284: EITDataset, 304: EITDataset, 'mag': MDIDataset}
         data_sets = [ds[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
-                     for wl_id, files in zip(wavelengths, instrument_files)]
+                     for wl_id, files in zip(wavelengths, paths)]
 
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
-
-
-class SOHOHMIDataset(BaseDataset):
-
-    def __init__(self, soho_ds_path, hmi_ds_path, resolution=1024, ext='.fits', n_samples=None, **kwargs):
-        basenames_soho = [[os.path.basename(f) for f in glob.glob('%s/%s/*.fits' % (soho_ds_path, wl))] for wl in
-                          ['171', '195', '284', '304']]
-        basenames_soho = sorted(set(basenames_soho[0]).intersection(*basenames_soho[1:]))
-        soho_dates = np.array([parse(f.split('.')[0]) for f in basenames_soho])
-
-        hmi_files = sorted(glob.glob('%s/*.fits' % hmi_ds_path))
-        hmi_files = np.array(hmi_files)
-        hmi_dates = np.array(sorted([parse(os.path.basename(f).split('.')[0]) for f in hmi_files]))
-
-        soho_dates = [d for d in soho_dates if d >= min(hmi_dates)]
-        if n_samples:
-            soho_dates = soho_dates[::len(soho_dates) // n_samples]
-        hmi_dates = [hmi_dates[np.abs(hmi_dates - date).argmin()] for date in soho_dates]
-
-        instrument_files = [['%s/%s/%s.fits' % (soho_ds_path, wl, d.isoformat('T')) for d in soho_dates]
-                            for wl in ['171', '195', '284', '304', ]] + \
-                           [['%s/%s.fits' % (hmi_ds_path, d.isoformat('T')) for d in hmi_dates]]
-
-        data_sets = [EITDataset(instrument_files[0], 171, resolution=resolution, ext=ext),
-                     EITDataset(instrument_files[1], 195, resolution=resolution, ext=ext),
-                     EITDataset(instrument_files[2], 284, resolution=resolution, ext=ext),
-                     EITDataset(instrument_files[3], 304, resolution=resolution, ext=ext),
-                     HMIDataset(instrument_files[4], 'mag', resolution=resolution, ext=ext)
-                     ]
-
-        self.basenames = ['%s.fits' % (d.isoformat('T')) for d in soho_dates]
-        self.data_sets = data_sets
-
-        editors = [StackEditor(data_sets)]
-        super().__init__(list(range(len(soho_dates))), editors, **kwargs)
-
-    def getId(self, idx):
-        return self.basenames[idx].split('.')[0]
 
 
 class STEREODataset(StackDataset):
 
-    def __init__(self, path, patch_shape=None, resolution=1024, **kwargs):
-        data_sets = [SECCHIDataset(os.path.join(path, '171'), 171, resolution=resolution),
-                     SECCHIDataset(os.path.join(path, '195'), 195, resolution=resolution),
-                     SECCHIDataset(os.path.join(path, '284'), 284, resolution=resolution),
-                     SECCHIDataset(os.path.join(path, '304'), 304, resolution=resolution),
+    def __init__(self, data, patch_shape=None, resolution=1024, **kwargs):
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, ['171', '195', '284', '304'], **kwargs)
+        data_sets = [SECCHIDataset(paths[0], 171, resolution=resolution),
+                     SECCHIDataset(paths[1], 195, resolution=resolution),
+                     SECCHIDataset(paths[2], 284, resolution=resolution),
+                     SECCHIDataset(paths[3], 304, resolution=resolution),
                      ]
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
-
-
-class STEREOMagnetogramDataset(BaseDataset):
-
-    def __init__(self, path, patch_shape=None, resolution=1024, **kwargs):
-        ds_171 = SECCHIDataset(os.path.join(path, 'secchi_171'), 171, resolution=resolution)
-        ds_195 = SECCHIDataset(os.path.join(path, 'secchi_195'), 195, resolution=resolution)
-        ds_284 = SECCHIDataset(os.path.join(path, 'secchi_284'), 284, resolution=resolution)
-        ds_304 = SECCHIDataset(os.path.join(path, 'secchi_304'), 304, resolution=resolution)
-        ds_zeros = ZerosDataset(len(ds_171), resolution=resolution)
-        data_sets = [ds_171, ds_195, ds_284, ds_304, ds_zeros, ]
-        editors = [StackEditor(data_sets)]
-        if patch_shape is not None:
-            editors.append(BrightestPixelPatchEditor(patch_shape))
-        super().__init__(range(len(data_sets[0])), editors)
-
-
-class GregorDataset(BaseDataset):
-
-    def __init__(self, path, ext='.fts', **kwargs):
-        map_paths = sorted(glob.glob(os.path.join(path, "**", '*' + ext), recursive=True)) if isinstance(path,
-                                                                                                         str) else path
-        norm = gregor_norms['gband']
-
-        sub_editors = [MapToDataEditor(),
-                       NanEditor(),
-                       NormalizeEditor(norm),
-                       ExpandDimsEditor()]
-        editors = [LoadGregorGBandEditor(), DistributeEditor(sub_editors)]
-
-        super().__init__(map_paths, editors)
 
 
 class EITDataset(BaseDataset):
 
     def __init__(self, data, wavelength, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[wavelength]
-        if isinstance(data, str):
-            map_paths = sorted(glob.glob(os.path.join(data, "**", '*' + ext), recursive=True))
-        elif isinstance(data, list):
-            map_paths = data
-        else:
-            raise Exception('Unsupported data type: %s' % type(data))
 
         editors = [LoadMapEditor(),
                    EITCheckEditor(),
@@ -344,20 +230,13 @@ class EITDataset(BaseDataset):
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(map_paths, editors=editors)
+        super().__init__(data, editors=editors, **kwargs)
 
 
 class MDIDataset(BaseDataset):
 
     def __init__(self, data, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[6173]
-        if isinstance(data, str):
-            map_paths = sorted(glob.glob(os.path.join(data, "**", '*' + ext), recursive=True))
-        elif isinstance(data, list):
-            map_paths = data
-        else:
-            raise Exception('Unsupported data type: %s' % type(data))
-
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
                    RemoveOffLimbEditor(),
@@ -365,7 +244,7 @@ class MDIDataset(BaseDataset):
                    NanEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(map_paths, editors=editors)
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
 
 
 class AIADataset(BaseDataset):
@@ -384,7 +263,7 @@ class AIADataset(BaseDataset):
 
 class HMIDataset(BaseDataset):
 
-    def __init__(self, path, id, resolution=2048, ext='.fits', **kwargs):
+    def __init__(self, data, id, resolution=2048, ext='.fits', **kwargs):
         norm = sdo_norms[id]
 
         editors = [LoadMapEditor(),
@@ -394,12 +273,12 @@ class HMIDataset(BaseDataset):
                    NanEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(path, editors=editors, ext=ext, **kwargs)
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
 
 
 class HMIContinuumDataset(BaseDataset):
 
-    def __init__(self, path, patch_shape=None, **kwargs):
+    def __init__(self, data, patch_shape=None, **kwargs):
         norm = sdo_norms['continuum']
 
         editors = [LoadMapEditor(),
@@ -410,12 +289,12 @@ class HMIContinuumDataset(BaseDataset):
                    NanEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
-        super().__init__(path, editors=editors, **kwargs)
+        super().__init__(data, editors=editors, **kwargs)
 
 
 class HinodeDataset(BaseDataset):
 
-    def __init__(self, path, scale=0.15, wavelength='continuum', **kwargs):
+    def __init__(self, data, scale=0.15, wavelength='continuum', **kwargs):
         norm = hinode_norms[wavelength]
 
         editors = [LoadMapEditor(),
@@ -425,12 +304,12 @@ class HinodeDataset(BaseDataset):
                    NanEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
-        super().__init__(path, editors=editors, **kwargs)
+        super().__init__(data, editors=editors, **kwargs)
 
 
 class SECCHIDataset(BaseDataset):
 
-    def __init__(self, path, wavelength, resolution=1024, **kwargs):
+    def __init__(self, data, wavelength, resolution=1024, **kwargs):
         norm = stereo_norms[wavelength]
 
         editors = [LoadMapEditor(),
@@ -438,7 +317,64 @@ class SECCHIDataset(BaseDataset):
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(path, editors=editors, **kwargs)
+        super().__init__(data, editors=editors, **kwargs)
+
+
+class KSODataset(BaseDataset):
+
+    def __init__(self, data: Union[str, list], resolution=256, ext=".fts.gz", **kwargs):
+        editors = [LoadMapEditor(),
+                   KSOPrepEditor(),
+                   NormalizeRadiusEditor(resolution),
+                   MapToDataEditor(),
+                   ImageNormalizeEditor(0, 1000),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+class KSOFlatDataset(BaseDataset):
+
+    def __init__(self, data, resolution=256, ext=".fts.gz", date_parser=None, **kwargs):
+        editors = [LoadMapEditor(),
+                   KSOPrepEditor(),
+                   NormalizeRadiusEditor(resolution, 0),
+                   LimbDarkeningCorrectionEditor(),
+                   MapToDataEditor(),
+                   ImageNormalizeEditor(0.65, 1.5, stretch=AsinhStretch(0.5)),
+                   NanEditor(-1),
+                   ReshapeEditor((1, resolution, resolution))]
+        if date_parser is None:
+            date_parser = lambda f: parse(os.path.basename(f)[14:-7].replace('_', 'T'))
+        super().__init__(data, editors=editors, ext=ext, date_parser=date_parser, **kwargs)
+
+
+class KSOFilmDataset(BaseDataset):
+
+    def __init__(self, data, resolution=256, ext=".fts.gz", date_parser=None, **kwargs):
+        editors = [LoadFITSEditor(),
+                   KSOFilmPrepEditor(),
+                   NormalizeRadiusEditor(resolution, 0),
+                   LimbDarkeningCorrectionEditor(),
+                   MapToDataEditor(),
+                   ImageNormalizeEditor(0.39, 1.94, stretch=AsinhStretch(0.5)),
+                   NanEditor(-1),
+                   ReshapeEditor((1, resolution, resolution))]
+        if date_parser is None:
+            date_parser = lambda f: parse(os.path.basename(f)[-22:-7].replace('_', 'T'))
+        super().__init__(data, editors=editors, ext=ext, date_parser=date_parser, **kwargs)
+
+
+class GregorDataset(BaseDataset):
+
+    def __init__(self, data, ext='.fts', **kwargs):
+        norm = gregor_norms['gband']
+        sub_editors = [MapToDataEditor(),
+                       NanEditor(),
+                       NormalizeEditor(norm),
+                       ExpandDimsEditor()]
+        editors = [LoadGregorGBandEditor(), DistributeEditor(sub_editors)]
+
+        super().__init__(data, editors, ext=ext, **kwargs)
 
 
 class ZerosDataset(Dataset):

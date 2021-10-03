@@ -2,13 +2,11 @@ import glob
 import os
 
 from astropy.coordinates import SkyCoord
-from dateutil.parser import parse
-from imageio import imsave
 from sunpy.map import Map
 from sunpy.physics.differential_rotation import solar_rotate_coordinate
 
 from iti.data.align import alignMaps
-from iti.prediction.translate import HMIToHinode
+from iti.translate import HMIToHinode
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 

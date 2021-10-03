@@ -11,11 +11,15 @@ import torch
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import StorageDataset, HinodeDataset, GregorDataset
-from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
+from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer, loop
+from iti.trainer import Trainer, loop
 
 base_dir = "/gss/r.jarolim/iti/gregor_hinode_v2"
+gregor_path = "/gss/r.jarolim/data/gregor"
+hinode_path = '/gss/r.jarolim/data/hinode/gband/*.fits'
+gregor_converted_path = '/gss/r.jarolim/data/converted/gregor_train'
+hinode_converted_path = '/gss/r.jarolim/data/converted/hinode_gband_train'
 n_samples = 6
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
@@ -34,16 +38,16 @@ trainer.train()
 start_it = trainer.resume(base_dir)
 
 # Find Hinode Files
-hinode_files = sorted(glob.glob('/gss/r.jarolim/data/hinode/gband/*.fits'))
+hinode_files = sorted(glob.glob(hinode_path))
 
 # Init Dataset
-gregor_dataset = GregorDataset("/gss/r.jarolim/data/gregor")
+gregor_dataset = GregorDataset(gregor_path)
 gregor_dataset = StorageDataset(gregor_dataset,
-                                '/gss/r.jarolim/data/converted/gregor_train',
+                                gregor_converted_path,
                                 ext_editors=[RandomPatch3DEditor((n_samples, 256, 256))])
 
 hinode_dataset = StorageDataset(HinodeDataset(hinode_files, scale=0.056, wavelength='gband'),
-                                '/gss/r.jarolim/data/converted/hinode_gband_train',
+                                hinode_converted_path,
                                 ext_editors=[RandomPatchEditor((256, 256))])
 
 gregor_iterator = loop(DataLoader(gregor_dataset, batch_size=1, shuffle=True, num_workers=8))
@@ -64,9 +68,9 @@ bab_callback = PlotBAB(hinode_dataset.sample(4), trainer, prediction_dir, log_it
 aba_callback = PlotABA(gregor_dataset.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-gregor_plot_dataset = GregorDataset("/gss/r.jarolim/data/gregor")
+gregor_plot_dataset = GregorDataset(gregor_path)
 gregor_plot_dataset = StorageDataset(gregor_plot_dataset,
-                                '/gss/r.jarolim/data/converted/gregor_train',
+                                     gregor_converted_path,
                                      ext_editors=[RandomPatch3DEditor((n_samples, 1024, 1024))])
 aba_full_callback = PlotABA(gregor_plot_dataset.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='ABA_FULL', batch_size=1)
@@ -80,9 +84,6 @@ aba_callback.call(0)
 aba_full_callback.call(0)
 bab_callback.call(0)
 
-# Init generator stack
-# trainer.fill_stack([(next(soho_iterator).float().cuda().detach(),
-#                      next(sdo_iterator).float().cuda().detach()) for _ in range(50)])
 # Start training
 for it in range(start_it, int(1e8)):
     if it > 250000:

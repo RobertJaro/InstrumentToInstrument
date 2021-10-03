@@ -11,13 +11,11 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 from datetime import datetime
 from reproject import reproject_interp
-from reproject.mosaicking import reproject_and_coadd
-from sunpy.coordinates import frames
 from sunpy.map import Map
 from sunpy.visualization.colormaps import cm
 
 from iti.data.editor import AIAPrepEditor
-from iti.prediction.translate import STEREOToSDOMagnetogram
+from iti.translate import STEREOToSDOMagnetogram
 
 wavelengths = [(171, 171), (195, 193,), (284, 211,), (304, 304,)]
 cmaps = [cm.sdoaia171, cm.sdoaia193, cm.sdoaia211, cm.sdoaia304]

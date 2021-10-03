@@ -3,12 +3,12 @@ import os
 
 from skimage.io import imsave
 
-from iti.prediction.translate import KSOFilmToCCD
+from iti.translate import KSOFilmToCCD
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 base_path = "/gss/r.jarolim/iti/film_v8"
-prediction_path = os.path.join(base_path, 'translation')
+prediction_path = os.path.join(base_path, 'compare')
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
 translator = KSOFilmToCCD(resolution=512, model_path=os.path.join(base_path, 'generator_AB.pt'))

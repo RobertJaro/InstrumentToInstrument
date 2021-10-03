@@ -3,19 +3,24 @@ import os
 
 import torch
 
-from iti.data.editor import RandomPatchEditor, BrightestPixelPatchEditor
+from iti.data.editor import BrightestPixelPatchEditor
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 from torch.utils.data import DataLoader
 
 from iti.data.dataset import StorageDataset, KSOFlatDataset
-from iti.evaluation.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
+from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.train.trainer import Trainer, loop
+from iti.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/kso_quality_1024_v8"
+base_dir = "/gss/r.jarolim/iti/kso_quality_1024_v11"
 resolution = 1024
+low_path = "/gss/r.jarolim/data/anomaly_data_set/quality2"
+low_converted_path = '/gss/r.jarolim/data/converted/iti/kso_anomaly_q2_flat_%d' % resolution
+high_path = "/gss/r.jarolim/data/kso_synoptic"
+high_converted_path = '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution
+
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -32,18 +37,17 @@ trainer.cuda()
 start_it = trainer.resume(base_dir)
 
 # Init Dataset
-q1_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution, months=list(range(11)))
-q1_storage = StorageDataset(q1_dataset,
-                            '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution,
+
+q1_dataset = KSOFlatDataset(high_path, resolution, months=list(range(11)))
+q1_storage = StorageDataset(q1_dataset, high_converted_path,
                             ext_editors=[BrightestPixelPatchEditor((256, 256), random_selection=0.8)])
 
-q2_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_general/quality2", resolution, months=list(range(11)))
-q2_storage = StorageDataset(q2_dataset,
-                            '/gss/r.jarolim/data/converted/iti/kso_q2_flat_%d' % resolution,
+q2_dataset = KSOFlatDataset(low_path, resolution, months=list(range(11)))
+q2_storage = StorageDataset(q2_dataset, low_converted_path,
                             ext_editors=[BrightestPixelPatchEditor((256, 256), random_selection=0.8)])
 
-q1_fulldisc = StorageDataset(q1_dataset, '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution)
-q2_fulldisc = StorageDataset(q2_dataset, '/gss/r.jarolim/data/converted/iti/kso_q2_flat_%d' % resolution)
+q1_full_disk = StorageDataset(q1_dataset, high_converted_path)
+q2_full_disk = StorageDataset(q2_dataset, low_converted_path)
 
 q1_iterator = loop(DataLoader(q1_storage, batch_size=1, shuffle=True, num_workers=8))
 q2_iterator = loop(DataLoader(q2_storage, batch_size=1, shuffle=True, num_workers=8))
@@ -63,18 +67,21 @@ bab_callback = PlotBAB(q1_storage.sample(8), trainer, prediction_dir, log_iterat
 aba_callback = PlotABA(q2_storage.sample(8), trainer, prediction_dir, log_iteration=log_iteration,
                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300)
 
-aba_fulldisc = PlotABA(q2_fulldisc.sample(2), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300, plot_id='FULL_ABA')
+aba_full_disk = PlotABA(q2_full_disk.sample(2), trainer, prediction_dir, log_iteration=log_iteration,
+                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300, plot_id='FULL_ABA')
 
-bab_fulldisc = PlotBAB(q1_fulldisc.sample(2), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300, plot_id='FULL_BAB')
+bab_full_disk = PlotBAB(q1_full_disk.sample(2), trainer, prediction_dir, log_iteration=log_iteration,
+                        plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, dpi=300, plot_id='FULL_BAB')
 
 v_callback = VariationPlotBA(q1_storage.sample(8), trainer, prediction_dir, 4, log_iteration=log_iteration,
                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
 
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, aba_fulldisc, bab_fulldisc]
+callbacks = [history, progress, save, bab_callback, aba_callback, v_callback, aba_full_disk, bab_full_disk]
 
 # Start training
+for _ in range(100):
+    trainer.fill_stack(next(q2_iterator).float().cuda().detach(),
+                       next(q1_iterator).float().cuda().detach())
 for it in range(start_it, int(1e8)):
     if it > 100000:
         trainer.gen_ab.eval()  # fix running stats
