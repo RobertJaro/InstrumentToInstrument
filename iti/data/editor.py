@@ -76,9 +76,7 @@ class LoadFITSEditor(Editor):
     def call(self, map_path, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # ignore warnings
-            dst = shutil.copy(map_path, os.path.join(os.environ.get("TMPDIR"), os.path.basename(map_path)))
-            hdul = fits.open(dst)
-            os.remove(dst)
+            hdul = fits.open(map_path)
             hdul.verify("fix")
             data, header = hdul[0].data, hdul[0].header
             hdul.close()

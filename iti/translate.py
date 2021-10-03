@@ -252,7 +252,7 @@ class KSOLowToHigh(InstrumentToInstrument):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
-    def translate(self, paths, return_arrays=True, **kwargs):
+    def translate(self, paths, return_arrays=False, **kwargs):
         ds = KSOFlatDataset(paths, self.resolution, **kwargs)
         for result, inputs, outputs in self._translateDataset(ds):
             if return_arrays:
@@ -266,7 +266,7 @@ class KSOFilmToCCD(InstrumentToInstrument):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
-    def translate(self, paths, return_arrays=True):
+    def translate(self, paths, return_arrays=False):
         ds = KSOFilmDataset(paths, self.resolution)
         for result, inputs, outputs in self._translateDataset(ds):
             if return_arrays:
