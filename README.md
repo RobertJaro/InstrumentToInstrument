@@ -1,6 +1,9 @@
 ![](images/HinodeEnhanced_v2.jpg)
 # Instrument to Instrument Translation for Solar Observations
 
+# [Paper](#paper) --- [Usage](#usage) --- [Framework](#framework) 
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/examples/ITI_translation.ipynb)
 
 ## Abstract
 The constant improvement of astronomical instrumentation provides the foundation for scientific discoveries. In general, these improvements have only implications forward in time, while previous observations do not profit from this trend. In solar physics, the study of long-term evolution typically exceeds the lifetime of single instruments and data driven approaches are strongly limited in terms of coherent long-term data samples.
@@ -11,19 +14,33 @@ Here we provide a general method that translates between image domains of differ
 
 We demonstrate that our method can provide unified long-term data sets at the highest quality, by applying it to five different applications of ground- and space-based solar observations. We obtain 1) a homogeneous data series of 24 years of space-based observations of the solar corona, 2) solar full-disk observations with unprecedented spatial resolution, 3) real-time mitigation of atmospheric degradations in ground-based observations, 4) a uniform series of ground-based H-alpha observations starting from 1973, that unifies solar observations recorded on photographic film and CCD, 5) magnetic field estimates from the solar far-side based on multi-band EUV imagery. The direct comparison to simultaneous high-quality observations shows that our method produces images that are perceptually similar and match the reference image distribution.
 
+## Usage
 
-## Examples
+Start translating your own data online with Google Colab:
+https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/examples/ITI_translation.ipynb
+
+For your local environment use pip:
+``
+pip install iti
+``
+
+or the conda installation:
+``
+conda install iti -c conda-forge
+``
+
+For GPU support follow the installation instructions of pytorch: https://pytorch.org/get-started/locally/
+
+
+Google Colab offers free GPU resources, which can be used for a fast translation of data. 
+Note that you have to upload and download your data to the Notebook. For HMI-to-Hinode continuum we provide a downloader that can be modified to translate custom observations. Data from SOHO and STEREO requires preprocessing routines, that are only available in SSW IDL. 
+For larger amounts of data it is more efficient to translate the files on a local workstation (preferable with a GPU).
+
+## Framework
 
 Instrument-to-Instrument translation is designed as general framework that can be easily applied to similar tasks.
 Many of the basic data loading, normalizing and scaling operations are already implemented by editors and can be used for the creation of new data sets, while also new custom editors can be added.
 
-### Translation
-
-We provide a Google Colab notebook with examples of translations described in the paper:
-
-Google Colab offers free GPU resources, which can be used for a fast translation of files. 
-Note that you have to upload and download your data to the Notebook. For HMI-to-Hinode continuum we provide a downloader that can be modified to translate custom observations. Data from SOHO and STEREO requires preprocessing routines, that are only available in SSW IDL. 
-For larger amounts of data it is more efficient to translate the files on a local workstation (preferable with a GPU).
 
 ### Create custom data sets
 
