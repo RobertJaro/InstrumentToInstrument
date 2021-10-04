@@ -3,7 +3,7 @@
 
 # [Paper](#paper) --- [Usage](#usage) --- [Framework](#framework) 
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/examples/ITI_translation.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/blob/master/examples/ITI_translation.ipynb)
 
 ## Abstract
 The constant improvement of astronomical instrumentation provides the foundation for scientific discoveries. In general, these improvements have only implications forward in time, while previous observations do not profit from this trend. In solar physics, the study of long-term evolution typically exceeds the lifetime of single instruments and data driven approaches are strongly limited in terms of coherent long-term data samples.
@@ -17,7 +17,7 @@ We demonstrate that our method can provide unified long-term data sets at the hi
 ## Usage
 
 Start translating your own data online with Google Colab:
-https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/examples/ITI_translation.ipynb
+https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/blob/master/examples/ITI_translation.ipynb
 
 For your local environment use pip:
 ``
