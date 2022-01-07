@@ -369,7 +369,7 @@ class Trainer(nn.Module):
             if isinstance(module, InstanceNorm2d):
                 module.momentum = momentum
 
-    def startBasicTraining(self, base_dir, ds_A, ds_B, ds_valid_A=None, ds_valid_B=None, iterations=int(1e8)):
+    def startBasicTraining(self, base_dir, ds_A, ds_B, ds_valid_A=None, ds_valid_B=None, iterations=int(1e8), num_workers=8):
         self.cuda()
         self.train()
         start_it = self.resume(base_dir)
@@ -389,8 +389,8 @@ class Trainer(nn.Module):
         if ds_valid_B is not None and ds_valid_A is not None:
             callbacks += [ValidationHistoryCallback(self, ds_valid_A, ds_valid_B, base_dir, 1000)]
         # init data loaders
-        B_iterator = loop(DataLoader(ds_B, batch_size=1, shuffle=True, num_workers=8))
-        A_iterator = loop(DataLoader(ds_A, batch_size=1, shuffle=True, num_workers=8))
+        B_iterator = loop(DataLoader(ds_B, batch_size=1, shuffle=True, num_workers=num_workers))
+        A_iterator = loop(DataLoader(ds_A, batch_size=1, shuffle=True, num_workers=num_workers))
         # start update cycle
         for it in range(start_it, iterations):
             if it > 100000:
