@@ -2,9 +2,9 @@ from iti.data.dataset import SDODataset, SOHODataset
 from iti.train.model import DiscriminatorMode
 from iti.trainer import Trainer
 
-base_dir = "/gss/r.jarolim/iti/soho_to_sdo"
-sdo_data_path = "/gss/r.jarolim/data/ch_detection"
-soho_data_path = "/gss/r.jarolim/data/soho_iti2021_prep"
+base_dir = "<<path for training results>>"
+sdo_data_path = "<<data set B>>"
+soho_data_path = "<<data set A>>"
 # Init model
 trainer = Trainer(input_dim_a=5, input_dim_b=5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0, norm='in_rs_aff')
 
