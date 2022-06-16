@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 # init
-base_path = '/gss/r.jarolim/iti/kso_quality_1024_v6'
+base_path = '/gss/r.jarolim/iti/kso_quality_zhores_version'
 prediction_path = os.path.join(base_path, 'compare')
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
@@ -59,7 +59,7 @@ for (_, kso_img, iti_img), ref_img, date in zip(translator.translate(lq_files), 
     axs[0].imshow(np.log(kso_f), cmap='magma')
     axs[1].imshow(np.log(iti_f), cmap='magma')
     axs[2].imshow(np.log(ref_f), cmap='magma')
-    fig.tight_layout(0)
+    plt.tight_layout(pad=0)
     fig.savefig(os.path.join(prediction_path, '%s_fft.jpg' % date.isoformat()), dpi=100)
     plt.close(fig)
 

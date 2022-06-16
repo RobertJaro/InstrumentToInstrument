@@ -1,30 +1,33 @@
 import os
 
+import pandas as pd
+
 from iti.data.editor import RandomPatchEditor
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
-
-import pandas
 import torch
 
 from iti.data.dataset import StorageDataset, HMIContinuumDataset, HinodeDataset
 from iti.evaluation.compute_fid import computeFID
 
 if __name__ == '__main__':
-    df = pandas.read_csv('/gss/r.jarolim/data/hinode/file_list.csv', index_col=False, parse_dates=['date'])
-    test_df = df[(df.date.dt.month == 12) | (df.date.dt.month == 11)]
+    base_path = '/gpfs/gpfs0/robert.jarolim/iti/hmi_hinode_v4'
+    model = torch.load(os.path.join(base_path, 'generator_AB.pt'))
+    evaluation_path = os.path.join(base_path, 'fid')
+
+    hmi_path = '/gpfs/gpfs0/robert.jarolim/data/iti/hmi_continuum'
+    hmi_converted_path = '/gpfs/gpfs0/robert.jarolim/data/converted/hmi_continuum'
+    hinode_converted_path = '/gpfs/gpfs0/robert.jarolim/data/converted/hinode_continuum'
+    hinode_file_list = '/gpfs/gpfs0/robert.jarolim/data/iti/hinode_file_list.csv'
+
+    df = pd.read_csv(hinode_file_list, index_col=False, parse_dates=['date'])
+    test_df = df[df.date.dt.month.isin([11, 12])]
     hinode_dataset = HinodeDataset(list(test_df.file))
-    hinode_dataset = StorageDataset(hinode_dataset, '/gss/r.jarolim/data/converted/hinode_continuum',
+    hinode_dataset = StorageDataset(hinode_dataset, hinode_converted_path,
                                     ext_editors=[RandomPatchEditor((640, 640))])
 
-    # Init Dataset
-    hmi_dataset = HMIContinuumDataset("/gss/r.jarolim/data/hmi_continuum/6173", months=[11, 12])
-    hmi_dataset = StorageDataset(hmi_dataset, '/gss/r.jarolim/data/converted/hmi_continuum',
-                                 ext_editors=[RandomPatchEditor((160, 160))])
+    hmi_dataset = HMIContinuumDataset(hmi_path, months=[11, 12])
+    hmi_dataset = StorageDataset(hmi_dataset, hmi_converted_path, ext_editors=[RandomPatchEditor((160, 160))])
 
-    model = torch.load('/gss/r.jarolim/iti/hmi_hinode_v12/generator_AB.pt')
-
-    evaluation_path = '/gss/r.jarolim/iti/hmi_hinode_v12/fid'
     fid_AB, fid_A = computeFID(evaluation_path, hmi_dataset, hinode_dataset, model, 1,
                                scale_factor=4)
     with open(os.path.join(evaluation_path, "FID.txt"), "w") as text_file:

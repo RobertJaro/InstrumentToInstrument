@@ -1,3 +1,4 @@
+import argparse
 import logging
 import multiprocessing
 import os
@@ -8,18 +9,19 @@ import drms
 import numpy as np
 import pandas as pd
 from astropy.io import fits
-from sunpy.map import Map
+from sunpy.io.fits import header_to_fits
+from sunpy.util import MetaDict
 
 
 class SDODownloader:
 
-    def __init__(self, base_path, wavelengths=['171', '193', '211', '304'], n_workers=4):
+    def __init__(self, base_path, email, wavelengths=['171', '193', '211', '304'], n_workers=5):
         self.ds_path = base_path
         self.wavelengths = [str(wl) for wl in wavelengths]
         self.n_workers = n_workers
-        os.makedirs(base_path, exist_ok=True)
+        [os.makedirs(os.path.join(base_path, wl), exist_ok=True) for wl in self.wavelengths + ['6173']]
 
-        self.drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
+        self.drms_client = drms.Client(email=email, verbose=False)
 
     def download(self, sample):
         header, segment, t = sample
@@ -30,20 +32,18 @@ class SDODownloader:
                 return map_path
             # load map
             url = 'http://jsoc.stanford.edu' + segment
-            file_path = os.path.join(self.ds_path, '%s') % segment[1:].replace('/', '-')
-            request.urlretrieve(url, filename=file_path)
-            hdul = fits.open(file_path)
-            hdul.verify('silentfix')
-            data = hdul[1].data
-            header = {k: v for k, v in header.items() if not pd.isna(v)}
+            request.urlretrieve(url, filename=map_path)
+
             header['DATE_OBS'] = header['DATE__OBS']
-            s_map = Map(data, header)
-            os.makedirs(dir, exist_ok=True)
-            map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
-            if os.path.exists(map_path):
-                os.remove(map_path)
-            s_map.save(map_path)
-            os.remove(file_path)
+            header = header_to_fits(MetaDict(header))
+            with fits.open(map_path, 'update') as f:
+                hdr = f[1].header
+                for k, v in header.items():
+                    if pd.isna(v):
+                        continue
+                    hdr[k] = v
+                f.verify('silentfix')
+
             return map_path
         except Exception as ex:
             logging.info('Download failed: %s (requeue)' % header['DATE__OBS'])
@@ -143,8 +143,16 @@ class SDODownloader:
 
 
 if __name__ == '__main__':
-    downloader = SDODownloader(base_path="/gss/r.jarolim/data/ch_detection")
+    parser = argparse.ArgumentParser(description='Download SDO data from JSOC with quality check and fallback')
+    parser.add_argument('--download_dir', type=str, help='path to the download directory.')
+    parser.add_argument('--email', type=str, help='registered email address for JSOC.')
+
+    args = parser.parse_args()
+    download_dir = args.download_dir
+
+    [os.makedirs(os.path.join(download_dir, str(c)), exist_ok=True) for c in [171, 193, 211, 304, 6173]]
+    downloader = SDODownloader(base_path=download_dir, email=args.email)
     start_date = datetime(2010, 5, 13)
-    for d in [start_date + i * timedelta(days=1) for i in
-              range((datetime.now() - start_date) // timedelta(days=1))]:
+    for d in [start_date + i * timedelta(hours=6) for i in
+              range((datetime.now() - start_date) // timedelta(hours=6))]:
         downloader.downloadDate(d)

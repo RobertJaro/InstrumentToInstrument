@@ -1,0 +1,6 @@
+
+files = findfile(’/localdata/USER/rja/hinode_iti2022/*.fits')
+
+fg_prep, files, -1, index, outdir='/localdata/USER/rja/hinode_iti2022_prep', /no_flatfield, /outflatfits
+
+END

@@ -9,7 +9,7 @@ from astropy import units as u
 
 from iti.data.editor import stereo_norms, sdo_norms
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 from iti.translate import STEREOToSDO
 

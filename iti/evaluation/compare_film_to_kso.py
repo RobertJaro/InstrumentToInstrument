@@ -5,7 +5,7 @@ from skimage.io import imsave
 
 from iti.translate import KSOFilmToCCD
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 base_path = "/gss/r.jarolim/iti/film_v8"
 prediction_path = os.path.join(base_path, 'compare')

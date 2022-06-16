@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 from datetime import datetime
 
 import astropy.units as u

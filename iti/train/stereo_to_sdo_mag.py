@@ -1,28 +1,30 @@
+import argparse
 import logging
 import os
 
+import numpy as np
 from sunpy.visualization.colormaps import cm
 
+from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
 from iti.data.editor import RandomPatchEditor, LambdaEditor, BrightestPixelPatchEditor, BlockReduceEditor
 from iti.train.model import DiscriminatorMode
+from iti.trainer import Trainer
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+parser = argparse.ArgumentParser(description='Train STEREO-To-SDO translations with synthetic magnetograms')
+parser.add_argument('--base_dir', type=str, help='path to the results directory.')
 
-import torch
-from torch.utils.data import DataLoader
+parser.add_argument('--sdo_path', type=str, help='path to the SDO data.')
+parser.add_argument('--stereo_path', type=str, help='path to the STEREO data.')
+parser.add_argument('--sdo_converted_path', type=str, help='path to store the converted SDO data.')
+parser.add_argument('--stereo_converted_path', type=str, help='path to store the converted STEREO data.')
 
-from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
-from iti.callback import PlotBAB, PlotABA, HistoryCallback, ProgressCallback, \
-    SaveCallback
-from iti.trainer import Trainer, loop
-import numpy as np
+args = parser.parse_args()
+base_dir = args.base_dir
 
-base_dir = "/gss/r.jarolim/iti/stereo_mag_v11"
-
-stereo_path = "/gss/r.jarolim/data/stereo_iti2021_prep"
-stereo_converted_path = '/gss/r.jarolim/data/converted/stereo_1024'
-sdo_path = "/gss/r.jarolim/data/ch_detection"
-sdo_converted_path = '/gss/r.jarolim/data/converted/sdo_2048'
+stereo_path = args.stereo_path
+stereo_converted_path = args.stereo_converted_path
+sdo_path = args.sdo_path
+sdo_converted_path = args.sdo_converted_path
 
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
@@ -50,11 +52,14 @@ def absolute_mag(data, **kwargs):
 abs_mag_editor = LambdaEditor(absolute_mag)
 block_reduce_editor = BlockReduceEditor(block_size=(1, 2, 2))
 
-sdo_train = SDODataset(sdo_path, resolution=2048, patch_shape=(1024, 1024), months=list(range(11)))
+test_months = [11, 12]
+train_months = list(range(2, 10))
+
+sdo_train = SDODataset(sdo_path, resolution=2048, patch_shape=(1024, 1024), months=train_months)
 sdo_train = StorageDataset(sdo_train, sdo_converted_path,
                            ext_editors=[RandomPatchEditor((512, 512)), block_reduce_editor, abs_mag_editor])
 
-stereo_train = STEREODataset(stereo_path)
+stereo_train = STEREODataset(stereo_path, months=test_months)
 stereo_train = StorageDataset(stereo_train, stereo_converted_path,
                               ext_editors=[BrightestPixelPatchEditor((512, 512)), RandomPatchEditor((256, 256))])
 
@@ -62,14 +67,6 @@ sdo_valid = SDODataset(sdo_path, resolution=2048)
 sdo_valid.addEditor(block_reduce_editor)
 sdo_valid.addEditor(abs_mag_editor)
 stereo_valid = STEREODataset(stereo_path)
-
-sdo_iterator = loop(DataLoader(sdo_train, batch_size=1, shuffle=True, num_workers=8))
-stereo_iterator = loop(DataLoader(stereo_train, batch_size=1, shuffle=True, num_workers=8))
-
-# Init Plot Callbacks
-history = HistoryCallback(trainer, base_dir)
-progress = ProgressCallback(trainer)
-save = SaveCallback(trainer, base_dir)
 
 plot_settings_A = [
     {"cmap": cm.sdoaia171, "title": "SECCHI 171", 'vmin': -1, 'vmax': 1},
@@ -85,37 +82,6 @@ plot_settings_B = [
     {"cmap": "gray", "title": "HMI Magnetogram", 'vmin': -1, 'vmax': 1}
 ]
 
-log_iteration = 1000
-
-cutout_aba_callback = PlotABA(stereo_train.sample(6), trainer, prediction_dir, log_iteration=log_iteration,
-                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='ABA')
-cutout_aba_callback.call(0)
-
-cutout_bab_callback = PlotBAB(sdo_train.sample(6), trainer, prediction_dir, log_iteration=log_iteration,
-                              plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='BAB')
-cutout_bab_callback.call(0)
-
-aba_callback = PlotABA(stereo_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_ABA')
-aba_callback.call(0)
-
-bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B, plot_id='full_disc_BAB')
-bab_callback.call(0)
-
-callbacks = [history, progress, save, aba_callback, bab_callback, cutout_aba_callback, cutout_bab_callback]
-
 # Start training
-for it in range(start_it, int(1e8)):
-    if it > 100000:
-        trainer.gen_ab.eval()  # fix running stats
-        trainer.gen_ba.eval()  # fix running stats
-    x_a, x_b = next(stereo_iterator), next(sdo_iterator)
-    x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    #
-    trainer.discriminator_update(x_a, x_b)
-    trainer.generator_update(x_a, x_b)
-    torch.cuda.synchronize()
-    #
-    for callback in callbacks:
-        callback(it)
+trainer.startBasicTraining(base_dir, stereo_train, sdo_train, stereo_valid, sdo_valid,
+                           plot_settings_A, plot_settings_B)

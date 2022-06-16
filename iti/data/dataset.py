@@ -3,6 +3,7 @@ import glob
 import logging
 import os
 import random
+import warnings
 from collections import Iterable
 from enum import Enum
 from typing import List, Union
@@ -18,7 +19,8 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
-    LoadGregorGBandEditor, DistributeEditor, RecenterEditor
+    LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
+    SOHOFixHeaderEditor
 
 
 class Norm(Enum):
@@ -26,6 +28,52 @@ class Norm(Enum):
     IMAGE = 'image'
     PEAK = 'adjusted'
     NONE = 'none'
+
+class ArrayDataset(Dataset):
+
+    def __init__(self, data, editors: List[Editor], **kwargs):
+        self.data = data
+        self.editors = editors
+
+        super().__init__()
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        data, _ = self.getIndex(idx)
+        return data
+
+    def sample(self, n_samples):
+        it = DataLoader(self, batch_size=1, shuffle=True, num_workers=4).__iter__()
+        samples = []
+        while len(samples) < n_samples:
+            try:
+                samples.append(next(it).detach().numpy()[0])
+            except Exception as ex:
+                logging.error(str(ex))
+                continue
+        del it
+        return np.array(samples)
+
+    def getIndex(self, idx):
+        try:
+            return self.convertData(self.data[idx])
+        except Exception as ex:
+            logging.error('Unable to convert %s: %s' % (self.data[idx], ex))
+            raise ex
+
+    def getId(self, idx):
+        return str(idx)
+
+    def convertData(self, data):
+        kwargs = {}
+        for editor in self.editors:
+            data, kwargs = editor.convert(data, **kwargs)
+        return data, kwargs
+
+    def addEditor(self, editor):
+        self.editors.append(editor)
 
 
 class BaseDataset(Dataset):
@@ -112,7 +160,7 @@ class StorageDataset(Dataset):
         id = self.dataset.getId(idx)
         store_path = os.path.join(self.store_dir, '%s.npy' % id)
         if os.path.exists(store_path):
-            data = np.load(store_path)
+            data = np.load(store_path, mmap_mode='r')
             data = self.convertData(data)
             return data
         data = self.dataset[idx]
@@ -152,10 +200,11 @@ class StorageDataset(Dataset):
                 continue
 
 
-def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, ext=None, **kwargs):
+def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, ext=None, basenames=None, **kwargs):
     pattern = '*' if ext is None else '*' + ext
-    basenames = [[os.path.basename(path) for path in glob.glob(os.path.join(path, d, '**', pattern), recursive=True)] for d in dirs]
-    basenames = list(set(basenames[0]).intersection(*basenames))
+    if basenames is None:
+        basenames = [[os.path.basename(path) for path in glob.glob(os.path.join(path, str(d), '**', pattern), recursive=True)] for d in dirs]
+        basenames = list(set(basenames[0]).intersection(*basenames))
     if months:  # assuming filename is parsable datetime
         basenames = [bn for bn in basenames if parse(bn.split('.')[0]).month in months]
     if years:  # assuming filename is parsable datetime
@@ -163,7 +212,7 @@ def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, 
     basenames = sorted(list(basenames))
     if n_samples:
         basenames = basenames[::len(basenames) // n_samples]
-    return [[os.path.join(path, dir, b) for b in basenames] for dir in dirs]
+    return [[os.path.join(path, str(dir), b) for b in basenames] for dir in dirs]
 
 
 class SDODataset(StackDataset):
@@ -173,10 +222,10 @@ class SDODataset(StackDataset):
             paths = data
         else:
             paths = get_intersecting_files(data, ['171', '193', '211', '304', '6173'], ext=ext, **kwargs)
-        data_sets = [AIADataset(paths[0], 171, resolution=resolution),
-                     AIADataset(paths[1], 193, resolution=resolution),
-                     AIADataset(paths[2], 211, resolution=resolution),
-                     AIADataset(paths[3], 304, resolution=resolution),
+        data_sets = [AIADataset(paths[0], 171, resolution=resolution, **kwargs),
+                     AIADataset(paths[1], 193, resolution=resolution, **kwargs),
+                     AIADataset(paths[2], 211, resolution=resolution, **kwargs),
+                     AIADataset(paths[3], 304, resolution=resolution, **kwargs),
                      HMIDataset(paths[4], 'mag', resolution=resolution)
                      ]
         super().__init__(data_sets, **kwargs)
@@ -212,7 +261,7 @@ class STEREODataset(StackDataset):
         data_sets = [SECCHIDataset(paths[0], 171, resolution=resolution),
                      SECCHIDataset(paths[1], 195, resolution=resolution),
                      SECCHIDataset(paths[2], 284, resolution=resolution),
-                     SECCHIDataset(paths[3], 304, resolution=resolution),
+                     SECCHIDataset(paths[3], 304, resolution=resolution, degradation=[-9.42497209e-05, 2.27153104e+00]),
                      ]
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
@@ -226,11 +275,12 @@ class EITDataset(BaseDataset):
 
         editors = [LoadMapEditor(),
                    EITCheckEditor(),
+                   SOHOFixHeaderEditor(),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
-        super().__init__(data, editors=editors, **kwargs)
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
 
 
 class MDIDataset(BaseDataset):
@@ -238,6 +288,7 @@ class MDIDataset(BaseDataset):
     def __init__(self, data, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[6173]
         editors = [LoadMapEditor(),
+                   SOHOFixHeaderEditor(),
                    NormalizeRadiusEditor(resolution),
                    RemoveOffLimbEditor(),
                    MapToDataEditor(),
@@ -249,12 +300,12 @@ class MDIDataset(BaseDataset):
 
 class AIADataset(BaseDataset):
 
-    def __init__(self, data, wavelength, resolution=2048, ext='.fits', **kwargs):
+    def __init__(self, data, wavelength, resolution=2048, ext='.fits', calibration='auto', **kwargs):
         norm = sdo_norms[wavelength]
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
-                   AIAPrepEditor(),
+                   AIAPrepEditor(calibration=calibration),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
@@ -292,6 +343,19 @@ class HMIContinuumDataset(BaseDataset):
         super().__init__(data, editors=editors, **kwargs)
 
 
+class SDOMLDataset(BaseDataset):
+
+    def __init__(self, data, wavelength, resolution=2048, ext='.fits', **kwargs):
+        norm = sdo_norms[wavelength]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution),
+                   AIAPrepEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
 class HinodeDataset(BaseDataset):
 
     def __init__(self, data, scale=0.15, wavelength='continuum', **kwargs):
@@ -309,10 +373,11 @@ class HinodeDataset(BaseDataset):
 
 class SECCHIDataset(BaseDataset):
 
-    def __init__(self, data, wavelength, resolution=1024, **kwargs):
+    def __init__(self, data, wavelength, resolution=1024, degradation=None,**kwargs):
         norm = stereo_norms[wavelength]
 
         editors = [LoadMapEditor(),
+                   SECCHIPrepEditor(degradation),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
                    NormalizeEditor(norm),

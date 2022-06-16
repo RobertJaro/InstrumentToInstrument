@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 import torch
 from skimage.io import imsave

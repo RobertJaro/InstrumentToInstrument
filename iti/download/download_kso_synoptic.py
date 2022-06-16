@@ -1,6 +1,9 @@
+import argparse
 import os
 import sys
 from ftplib import FTP
+
+import pandas as pd
 
 
 def searchHalpha(base_dir=""):
@@ -8,7 +11,8 @@ def searchHalpha(base_dir=""):
     files = ftp.nlst(base_dir)
     for file in files:
         if os.path.splitext(file)[1] != "":
-            if file.endswith(".fts.gz"):
+            if file.endswith(".fts.gz") and (valid_files is not None and
+                                             (valid_files.file_name == os.path.basename(file)).any()):
                 downloadFile(file)
             continue
         if file == base_dir:
@@ -27,7 +31,14 @@ def downloadFile(filename):
 
 
 if __name__ == '__main__':
-    local_path = sys.argv[1]
+    parser = argparse.ArgumentParser(description='Download KSO Halpha data')
+    parser.add_argument('--download_dir', type=str, help='path to the download directory.')
+    parser.add_argument('--download_files_csv', type=str, help='csv file with basenames of files to download.',
+                        required=False, default=None)
+    args = parser.parse_args()
+
+    local_path = args.download_dir
+    valid_files = pd.read_csv(args.download_files_csv, index_col=0) if args.download_files_csv is not None else None
 
     os.makedirs(local_path, exist_ok=True)
 

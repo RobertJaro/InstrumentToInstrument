@@ -1,7 +1,4 @@
-import glob
-import gzip
 import os
-import shutil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from typing import List, Tuple
@@ -10,7 +7,6 @@ from urllib import request
 import astropy.units as u
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
@@ -20,7 +16,7 @@ from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEdi
 
 class InstrumentToInstrument:
 
-    def __init__(self, model_name, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=8):
+    def __init__(self, model_name, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
         self.patch_factor = patch_factor
         self.depth_generator = depth_generator
         # Load Model
@@ -38,50 +34,53 @@ class InstrumentToInstrument:
         raise NotImplementedError()
 
     def _translateDataset(self, dataset):
-        pool = Pool(self.n_workers)
-        for img, kwargs in pool.imap(dataset.convertData, dataset.data):
-            #
-            original_shape = img.shape
-            img = np.array(img.data)  # remove np mask information
-            #
-            min_dim = min(
-                [i for i in range(img.shape[1], img.shape[1] * 2 ** (self.depth_generator + self.patch_factor))
-                 if i % 2 ** (self.depth_generator + self.patch_factor) == 0])  # find min dim
-            target_shape = (min_dim, min_dim)
-            padding_editor = PaddingEditor(target_shape)
-            # pad
-            padded_img = padding_editor.call(img)
-            # translate
-            with torch.no_grad():
-                if self.patch_factor > 0:
-                    iti_img = self._translateBlocks(padded_img, self.patch_factor)
-                else:
-                    iti_img = self.generator(torch.tensor(padded_img).float().to(self.device).unsqueeze(0))
-                    iti_img = iti_img[0].detach().cpu().numpy()
-            # unpad
-            scaling = iti_img.shape[-1] / padded_img.shape[-1]
-            iti_img = UnpaddingEditor([p * scaling for p in original_shape[1:]]).call(iti_img)
-            #
-            ref_meta = [k['header'] for k in kwargs['kwargs_list']] if 'kwargs_list' in kwargs else [
-                kwargs['header']]
-            # use last meta data as reference for additional observables
-            ref_meta += [ref_meta[-1]] * (len(iti_img) - len(ref_meta))
-            #
-            # create meta for additional channels
-            maps = [Map(d, self._createMeta(d, meta, scaling)) for d, meta in zip(iti_img, ref_meta)]
-            maps = maps[0] if len(maps) == 1 else maps
-            yield maps, img, iti_img
-        pool.close()
-        pool.join()
+        with Pool(self.n_workers) as pool:
+            for img, kwargs in pool.imap(dataset.convertData, dataset.data):
+                #
+                original_shape = img.shape
+                img = np.array(img.data)  # remove np mask information
+                #
+                min_dim = min(
+                    [i for i in range(img.shape[1], img.shape[1] * 2 ** (self.depth_generator + self.patch_factor))
+                     if i % 2 ** (self.depth_generator + self.patch_factor) == 0])  # find min dim
+                target_shape = (min_dim, min_dim)
+                padding_editor = PaddingEditor(target_shape)
+                # pad
+                padded_img = padding_editor.call(img)
+                # translate
+                with torch.no_grad():
+                    if self.patch_factor > 0:
+                        iti_img = self._translateBlocks(padded_img, self.patch_factor)
+                    else:
+                        iti_img = self.generator(torch.tensor(padded_img).float().to(self.device).unsqueeze(0))
+                        iti_img = iti_img[0].detach().cpu().numpy()
+                # unpad
+                scaling = iti_img.shape[-1] / padded_img.shape[-1]
+                iti_img = UnpaddingEditor([p * scaling for p in original_shape[1:]]).call(iti_img)
+                #
+                ref_meta = [k['header'] for k in kwargs['kwargs_list']] if 'kwargs_list' in kwargs else [
+                    kwargs['header']]
+                # use last meta data as reference for additional observables
+                ref_meta += [ref_meta[-1]] * (len(iti_img) - len(ref_meta))
+                #
+                ref_img = img.tolist()
+                ref_img += [ref_img[-1]] * (len(iti_img) - len(ref_img))  # extend list
+                ref_img = np.array(ref_img)
+                #
+                # create meta for additional channels
+                maps = [Map(d, self._createMeta(d, ref_d, meta)) for d, ref_d, meta in zip(iti_img, ref_img, ref_meta)]
+                maps = maps[0] if len(maps) == 1 else maps
+                yield maps, img, iti_img
 
-    def _createMeta(self, data, ref_meta, scaling):
-        ref_map = Map(data, ref_meta)  # copy observer
+    def _createMeta(self, data, ref_data, ref_meta):
+        scaling = data.shape[0] / ref_data.shape[0]
+        ref_map = Map(ref_data, ref_meta)  # copy observer
         scale = (ref_meta['cdelt1'] / scaling, ref_meta['cdelt2'] / scaling)
         coord = ref_map.reference_coordinate
         wl = ref_map.wavelength if ref_map.waveunit is not None else None
         meta = make_fitswcs_header(data, coord, rotation_matrix=ref_map.rotation_matrix, scale=scale * u.arcsec / u.pix,
-                                   observatory='ITI', instrument=ref_map.instrument, wavelength=wl,
-                                   exposure=1 * u.s)
+                                   observatory='ITI', instrument='ITI - ' + ref_map.instrument, wavelength=wl,
+                                   exposure=1 * u.s, )
         return meta
 
     def _translateBlocks(self, img, n_patches):
@@ -106,8 +105,8 @@ class InstrumentToInstrument:
         return iti_img
 
     def _getModelPath(self, model_name):
-        model_path = os.path.join(Path.home(), 'iti', model_name)
-        os.makedirs(os.path.join(Path.home(), 'iti'), exist_ok=True)
+        model_path = os.path.join(Path.home(), '.iti', model_name)
+        os.makedirs(os.path.join(Path.home(), '.iti'), exist_ok=True)
         if not os.path.exists(model_path):
             request.urlretrieve('http://kanzelhohe.uni-graz.at/iti/' + model_name, filename=model_path)
         return model_path
@@ -152,22 +151,22 @@ class InstrumentConverter:
 
 class SOHOToSDO(InstrumentToInstrument):
 
-    def __init__(self, model_name='soho_to_sdo_v0_1.pt', **kwargs):
+    def __init__(self, model_name='soho_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304], sdo_norms['mag']]
 
     def translate(self, path, basenames=None, **kwargs):
         soho_dataset = SOHODataset(path, basenames=basenames, **kwargs)
         for maps, img, iti_img in self._translateDataset(soho_dataset):
-            yield [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta))
-                   for s_map, norm in zip(maps, self.norms)]
+            yield [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instr))
+                   for s_map, norm, instr in zip(maps, self.norms, ['AIA'] * 4 + ['HMI'])]
 
-    def toSDOMeta(self, meta):
+    def toSDOMeta(self, meta, instrument):
         wl_map = {171: 171, 195: 193, 284: 211, 304: 304, 6768: 6173, 0: 0}
         new_meta = meta.copy()
         new_meta['obsrvtry'] = 'SOHO-to-SDO'
         new_meta['telescop'] = 'sdo'
-        new_meta['instrume'] = 'AIA' if meta.get('instrume', '') == 'EIT' else 'HMI'
+        new_meta['instrume'] = instrument
         new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
         new_meta['waveunit'] = 'angstrom'
         return new_meta
@@ -182,13 +181,13 @@ class SOHOToSDOEUV(SOHOToSDO):
     def translate(self, path, basenames=None):
         soho_dataset = SOHODataset(path, basenames=basenames, wavelengths=[171, 195, 284, 304])
         for maps, img, iti_img in self._translateDataset(soho_dataset):
-            yield [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta))
-                   for s_map, norm in zip(maps, self.norms)]
+            yield [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instr))
+                   for s_map, norm, instr in zip(maps, self.norms, ['AIA'] * 4)]
 
 
 class STEREOToSDO(InstrumentToInstrument):
 
-    def __init__(self, model_name='stereo_to_sdo_v0_1.pt', **kwargs):
+    def __init__(self, model_name='stereo_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
     def translate(self, path, basenames=None, return_arrays=False):
@@ -215,7 +214,7 @@ class STEREOToSDO(InstrumentToInstrument):
 
 class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
-    def __init__(self, model_name='stereo_to_sdo_mag_v0_1.pt', **kwargs):
+    def __init__(self, model_name='stereo_to_sdo_mag_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
     def translate(self, path, basenames=None, return_arrays=False):
@@ -231,7 +230,8 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
                 yield result
 
     def _createMagnetogramMap(self, data, meta):
-        s_map = Map((data + 1) / 2 * 1000, self.toSDOMeta(meta, 'HMI', 6173))
+        v_max = sdo_norms['mag'].vmax
+        s_map = Map((data + 1) / 2 * v_max, self.toSDOMeta(meta, 'HMI', 6173))
         hpc_coords = all_coordinates_from_map(s_map)
         r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
         s_map.data[r > 1] = np.nan
@@ -248,7 +248,7 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
 
 class KSOLowToHigh(InstrumentToInstrument):
-    def __init__(self, model_name='kso_low_to_high_v0_1.pt', resolution=512, **kwargs):
+    def __init__(self, model_name='kso_low_to_high_v0_2.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
@@ -276,7 +276,7 @@ class KSOFilmToCCD(InstrumentToInstrument):
 
 
 class HMIToHinode(InstrumentToInstrument):
-    def __init__(self, model_name='hmi_to_hinode_v0_1.pt', **kwargs):
+    def __init__(self, model_name='hmi_to_hinode_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
     def translate(self, paths):
@@ -296,31 +296,3 @@ class KSOFlatConverter(InstrumentConverter):
     def convert(self, paths):
         ds = KSOFlatDataset(paths, self.resolution)
         return self._convertDataset(ds)
-
-
-if __name__ == '__main__':
-    # translator = SOHOtoSDO(model_path='/gss/r.jarolim/iti/soho_sdo_v23/checkpoint_120000.pt')
-    # iti_maps = translator.translate('/gss/r.jarolim/data/soho/valid', ['2001-12-01T01:19.fits'])
-
-    base_path = '/gss/r.jarolim/iti/kso_quality_1024_v3'
-    prediction_path = os.path.join(base_path, 'translation')
-    os.makedirs(prediction_path, exist_ok=True)
-    translator = KSOLowToHigh(resolution=1024, model_path=os.path.join(base_path, 'generatorAB.pt'))
-    map_files = list(glob.glob('/gss/r.jarolim/data/kso_general/quality2/*.fts.gz'))
-    map_files = map_files[::len(map_files) // 100]
-    iti_maps = translator.translate(map_files)
-
-    for kso_map, iti_map in zip(Map(map_files), iti_maps):
-        fig, axs = plt.subplots(1, 2, figsize=(16, 8))
-        kso_map.meta['WAVEUNIT'] = 'angstrom'
-        kso_map.plot(axes=axs[0], title='KSO', vmin=0, vmax=1000)
-        iti_map.plot(axes=axs[1], title='ITI', vmin=0, vmax=1000)
-        plt.savefig(os.path.join(prediction_path, '%s.jpg') %
-                    (iti_map.date.to_datetime().isoformat()))
-        #
-        file_path = os.path.join(prediction_path, '%s.fits') % iti_map.date.to_datetime().isoformat()
-        iti_map.save(file_path, overwrite=True)
-        with open(file_path, 'rb') as f_in, gzip.GzipFile(file_path + '.gz', 'wb') as f_out:
-            f_out.writelines(f_in)
-        os.remove(file_path)
-    shutil.make_archive(prediction_path, 'zip', prediction_path)

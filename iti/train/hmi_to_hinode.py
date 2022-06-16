@@ -1,26 +1,32 @@
+import argparse
 import logging
 import os
 from random import sample
 
 from iti.data.editor import RandomPatchEditor
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
-
-import torch
-from torch.utils.data import DataLoader
-
 from iti.data.dataset import StorageDataset, HMIContinuumDataset, HinodeDataset
-from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback
-from iti.trainer import Trainer, loop
+from iti.trainer import Trainer
 
 import pandas as pd
 
-base_dir = "/gss/r.jarolim/iti/hmi_hinode_v12"
-hmi_path = '/gss/r.jarolim/data/hmi_continuum/6173'
-hmi_converted_path = '/gss/r.jarolim/data/converted/hmi_continuum'
-hinode_converted_path = '/gss/r.jarolim/data/converted/hinode_continuum'
-hinode_file_list = '/gss/r.jarolim/data/hinode/file_list.csv'
+parser = argparse.ArgumentParser(description='Train HMI-To-Hinode translations')
+parser.add_argument('--base_dir', type=str, help='path to the results directory.')
+
+parser.add_argument('--hinode_path', type=str, help='path to the Hinode data.')
+parser.add_argument('--hinode_file_list', type=str, help='path to the Hinode file list (see iti.data.hinode.classify).')
+parser.add_argument('--hmi_path', type=str, help='path to the HMI data.')
+parser.add_argument('--hinode_converted_path', type=str, help='path to store the converted Hinode data.')
+parser.add_argument('--hmi_converted_path', type=str, help='path to store the converted HMI data.')
+
+args = parser.parse_args()
+
+base_dir = args.base_dir
+hmi_path = args.hmi_path
+hmi_converted_path = args.hmi_converted_path
+hinode_converted_path = args.hinode_converted_path
+hinode_file_list = args.hinode_file_list
+
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
 
@@ -34,65 +40,43 @@ logging.basicConfig(
 # Init Model
 trainer = Trainer(1, 1, upsampling=2, norm='in_rs_aff', lambda_diversity=0)
 trainer.cuda()
-trainer.train()
-start_it = trainer.resume(base_dir)
+
+test_months = [11, 12]
+train_months = list(range(2, 10))
 
 df = pd.read_csv(hinode_file_list, index_col=False, parse_dates=['date'])
-train_df = df[(df.date.dt.month != 12) & (df.date.dt.month != 11)]
+
+train_df = df[df.date.dt.month.isin(train_months)]
 features = train_df[train_df.classification == 'feature']
 quiet = train_df[train_df.classification == 'quiet']
 limb = train_df[train_df.classification == 'limb']
-hinode_files = list(features.file) + list(limb.file) + sample(list(quiet.file), len(features) + len(limb))
+hinode_train_files = list(features.file) + list(limb.file) + sample(list(quiet.file), len(features) + len(limb))
+
+test_df = df[df.date.dt.month.isin(test_months)]
+features = train_df[train_df.classification == 'feature']
+quiet = train_df[train_df.classification == 'quiet']
+limb = train_df[train_df.classification == 'limb']
+hinode_test_files = list(features.file) + list(limb.file) + sample(list(quiet.file), len(features) + len(limb))
 
 # Init Dataset
-hmi_dataset = HMIContinuumDataset(hmi_path, (512, 512), months=list(range(11)))
-hmi_dataset = StorageDataset(hmi_dataset, hmi_converted_path,
-                             ext_editors=[RandomPatchEditor((160, 160))])
+hmi_train = HMIContinuumDataset(hmi_path, (512, 512), months=train_months, ext='.fits')
+hmi_train = StorageDataset(hmi_train, hmi_converted_path, ext_editors=[RandomPatchEditor((160, 160))])
 
-hinode_dataset = StorageDataset(HinodeDataset(hinode_files), hinode_converted_path,
-                                ext_editors=[RandomPatchEditor((640, 640))])
+hmi_valid = HMIContinuumDataset(hmi_path, (512, 512), months=test_months, ext='.fits')
+hmi_valid = StorageDataset(hmi_valid, hmi_converted_path, ext_editors=[RandomPatchEditor((160, 160))])
 
-hmi_iterator = loop(DataLoader(hmi_dataset, batch_size=1, shuffle=True, num_workers=8))
-hinode_iterator = loop(DataLoader(hinode_dataset, batch_size=1, shuffle=True, num_workers=8))
+hinode_train = HinodeDataset(hinode_train_files)
+hinode_train = StorageDataset(hinode_train, hinode_converted_path,
+                              ext_editors=[RandomPatchEditor((640, 640))])
 
-logging.info("Using {} HMI samples".format(len(hmi_dataset)))
-logging.info("Using {} Hinode samples".format(len(hinode_dataset)))
-
-# Init Callbacks
-history = HistoryCallback(trainer, base_dir)
-progress = ProgressCallback(trainer)
-save = SaveCallback(trainer, base_dir)
+hinode_valid = HinodeDataset(hinode_test_files)
+hinode_valid = StorageDataset(hinode_valid, hinode_converted_path, ext_editors=[RandomPatchEditor((640, 640))])
 
 plot_settings_A = [
-    {"cmap": "gray", "title": "HMI Continuum", 'vmin': -1, 'vmax': 1}
+    {"cmap": "gray", "title": "HMI Continuum", 'vmin': -1, 'vmax': 1, },
 ]
 plot_settings_B = [
     {"cmap": "gray", "title": "Hinode Continuum", 'vmin': -1, 'vmax': 1},
 ]
 
-log_iteration = 1000
-bab_callback = PlotBAB(hinode_dataset.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-
-aba_callback = PlotABA(hmi_dataset.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-
-v_callback = VariationPlotBA(hinode_dataset.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
-                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-
-callbacks = [history, progress, save, bab_callback, aba_callback, v_callback]
-
-# Start training
-for it in range(start_it, int(1e8)):
-    if it > 100000:
-        trainer.gen_ab.eval()  # fix running stats
-        trainer.gen_ba.eval()  # fix running stats
-    x_a, x_b = next(hmi_iterator), next(hinode_iterator)
-    x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    #
-    trainer.discriminator_update(x_a, x_b)
-    trainer.generator_update(x_a, x_b)
-    torch.cuda.synchronize()
-    #
-    for callback in callbacks:
-        callback(it)
+trainer.startBasicTraining(base_dir, hmi_train, hinode_train, hmi_valid, hinode_valid, plot_settings_A, plot_settings_B)

@@ -18,7 +18,7 @@ class Trainer(nn.Module):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
                  activation='tanh', norm='in_rs_aff', use_batch_statistic=False,
                  n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
-                 depth_generator=3, depth_discriminator=4, depth_noise=4,
+                 depth_generator=3, depth_discriminator=4, depth_noise=4, skip_connections=True,
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
                  learning_rate=1e-4):
@@ -35,6 +35,7 @@ class Trainer(nn.Module):
         logging.info("Base Number of Filters:   %d" % n_filters)
         logging.info("Activation:   %s" % str(activation))
         logging.info("Normalization:   %s" % str(norm))
+        logging.info("Skip Connections:   %s" % str(skip_connections))
         logging.info("Batch Statistic:   %s" % str(use_batch_statistic))
         logging.info("Learning Rate:   %f" % learning_rate)
         logging.info("Lambda Discriminator Loss:   %f" % lambda_discriminator)
@@ -68,10 +69,10 @@ class Trainer(nn.Module):
 
         ############################## INIT NETWORKS ###############################
         self.gen_ab = GeneratorAB(input_dim_a, input_dim_b, depth_generator, upsampling, n_filters,
-                                  norm=norm, output_activ=activation, pad_type='reflect')  # generator for domain a-->b
+                                  norm=norm, output_activ=activation, pad_type='reflect', skip_connections=skip_connections)  # generator for domain a-->b
         self.gen_ba = GeneratorBA(input_dim_b, input_dim_a, noise_dim, depth_generator, depth_noise, upsampling,
                                   n_filters, norm=norm, output_activ=activation,
-                                  pad_type='reflect')  # generator for domain b-->a
+                                  pad_type='reflect', skip_connections=skip_connections)  # generator for domain b-->a
         self.dis_a = Discriminator(input_dim_a, n_filters, n_discriminators,
                                    depth_discriminator, discriminator_mode,
                                    norm=norm, batch_statistic=use_batch_statistic)  # discriminator for domain a
@@ -126,40 +127,30 @@ class Trainer(nn.Module):
         return torch.mean(torch.abs(input - target))
 
     def forward(self, x_a, x_b):
-        self.eval()
         n_gen = self.generateNoise(x_b)
         x_ab = self.gen_ab(x_a)
         x_ba = self.gen_ba(x_b, n_gen)
-        self.train()
         return x_ab, x_ba
 
     def forwardAB(self, x_a):
-        self.eval()
         x_ab = self.gen_ab(x_a)
-        self.train()
         return x_ab
 
     def forwardBA(self, x_b):
-        self.eval()
         n_gen = self.generateNoise(x_b)
         x_ba = self.gen_ba(x_b, n_gen)
-        self.train()
         return x_ba
 
     def forwardABA(self, x_a):
-        self.eval()
         n_a = self.estimator_noise(x_a)
         x_ab = self.gen_ab(x_a)
         x_aba = self.gen_ba(x_ab, n_a)
-        self.train()
         return x_ab, x_aba
 
     def forwardBAB(self, x_b):
-        self.eval()
         n_gen = self.generateNoise(x_b)
         x_ba = self.gen_ba(x_b, n_gen)
         x_bab = self.gen_ab(x_ba)
-        self.train()
         return x_ba, x_bab
 
     def generator_update(self, x_a, x_b):
@@ -369,9 +360,10 @@ class Trainer(nn.Module):
             if isinstance(module, InstanceNorm2d):
                 module.momentum = momentum
 
-    def startBasicTraining(self, base_dir, ds_A, ds_B, ds_valid_A=None, ds_valid_B=None, iterations=int(1e8), num_workers=8):
+    def startBasicTraining(self, base_dir, ds_A, ds_B, ds_valid_A=None, ds_valid_B=None,
+                           plot_settings_A=None, plot_settings_B=None, additional_callbacks=[],
+                           iterations=int(1e8), num_workers=8, validation_history=False, batch_size=1):
         self.cuda()
-        self.train()
         start_it = self.resume(base_dir)
         # Init Callbacks
         from iti.callback import HistoryCallback, ProgressCallback, SaveCallback, PlotBAB, PlotABA, ValidationHistoryCallback
@@ -383,20 +375,24 @@ class Trainer(nn.Module):
             prediction_dir = os.path.join(base_dir, 'prediction')
             os.makedirs(prediction_dir, exist_ok=True)
         if ds_valid_B is not None:
-            callbacks += [PlotBAB(ds_valid_B.sample(4), self, prediction_dir, log_iteration=1000)]
+            callbacks += [PlotBAB(ds_valid_B.sample(4), self, prediction_dir, log_iteration=1000,
+                                  plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
         if ds_valid_A is not None:
-            callbacks += [PlotABA(ds_valid_A.sample(4), self, prediction_dir, log_iteration=1000)]
-        if ds_valid_B is not None and ds_valid_A is not None:
+            callbacks += [PlotABA(ds_valid_A.sample(4), self, prediction_dir, log_iteration=1000,
+                                  plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
+        if validation_history:
+            assert ds_valid_B is not None and ds_valid_A is not None, 'Validation history requires validation data sets!'
             callbacks += [ValidationHistoryCallback(self, ds_valid_A, ds_valid_B, base_dir, 1000)]
+        callbacks += additional_callbacks
         # init data loaders
-        B_iterator = loop(DataLoader(ds_B, batch_size=1, shuffle=True, num_workers=num_workers))
-        A_iterator = loop(DataLoader(ds_A, batch_size=1, shuffle=True, num_workers=num_workers))
+        B_iterator = loop(DataLoader(ds_B, batch_size=batch_size, shuffle=True, num_workers=num_workers))
+        A_iterator = loop(DataLoader(ds_A, batch_size=batch_size, shuffle=True, num_workers=num_workers))
         # start update cycle
         for it in range(start_it, iterations):
-            if it > 100000:
-                self.gen_ab.eval()  # fix running stats
-                self.gen_ba.eval()  # fix running stats
-            #
+            self.train()
+            if it > 100000: # fix running stats
+                self.gen_ab.eval()
+                self.gen_ba.eval()
             x_a, x_b = next(A_iterator), next(B_iterator)
             x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
             self.discriminator_update(x_a, x_b)
@@ -406,8 +402,10 @@ class Trainer(nn.Module):
             self.generator_update(x_a, x_b)
             torch.cuda.synchronize()
             #
-            for callback in callbacks:
-                callback(it)
+            self.eval()
+            with torch.no_grad():
+                for callback in callbacks:
+                    callback(it)
 
 
 def convertSet(data_set, store_path):
@@ -435,9 +433,9 @@ def skip_invalid(iterable):
     #
     while True:
         try:
-            yield it.next()
+            yield next(it)
         except StopIteration as ex:
             return
-        except Exception as ex:
+        except (AssertionError, ValueError, Exception) as ex:
             logging.error(str(ex))
             continue

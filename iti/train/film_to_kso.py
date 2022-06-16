@@ -1,29 +1,37 @@
+import argparse
 import logging
 import os
-
-from iti.data.editor import RandomPatchEditor
-
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 from torch.utils.data import DataLoader
 
-from iti.data.dataset import KSOFlatDataset, StorageDataset, KSOFilmDataset
 from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
     SaveCallback
+from iti.data.dataset import KSOFlatDataset, StorageDataset, KSOFilmDataset
+from iti.data.editor import RandomPatchEditor
 from iti.trainer import Trainer, loop
 
-base_dir = "/gss/r.jarolim/iti/film_v9"
+parser = argparse.ArgumentParser(description='Train KSO Film-To-CCD translations')
+parser.add_argument('--base_dir', type=str, help='path to the results directory.')
 
-resolution = 512
-kso_path = "/gss/r.jarolim/data/kso_synoptic"
-film_path = "/gss/r.jarolim/data/filtered_kso_plate"
-kso_converted_path = '/gss/r.jarolim/data/converted/iti/kso_synoptic_q1_flat_%d' % resolution
-film_converted_path = '/gss/r.jarolim/data/converted/iti/kso_film_%d' % resolution
+parser.add_argument('--kso_path', type=str, help='path to the high-quality KSO data.')
+parser.add_argument('--film_path', type=str, help='path to the film KSO data.')
+parser.add_argument('--kso_converted_path', type=str, help='path to store the converted KSO data.')
+parser.add_argument('--film_converted_path', type=str, help='path to store the converted KSO-film data.')
+parser.add_argument('--resolution', type=int, help='resolution of the images (default=512).', default=512,
+                    required=False)
+
+args = parser.parse_args()
+
+base_dir = args.base_dir
+resolution = args.resolution
+kso_path = args.kso_path
+film_path = args.film_path
+kso_converted_path = args.kso_converted_path
+film_converted_path = args.film_converted_path
 
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
-
 
 logging.basicConfig(
     level=logging.INFO,

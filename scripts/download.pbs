@@ -1,2 +1,0 @@
-cd /home/r.jarolim/projects/InstrumentToInstrument
-python -i -m iti.download.download_sdo_comparison

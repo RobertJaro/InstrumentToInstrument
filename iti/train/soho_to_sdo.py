@@ -1,27 +1,30 @@
+import argparse
 import logging
 import os
 
+import matplotlib.pyplot as plt
 from sunpy.visualization.colormaps import cm
 
+from iti.data.dataset import SDODataset, SOHODataset, StorageDataset
 from iti.data.editor import RandomPatchEditor
 from iti.train.model import DiscriminatorMode
+from iti.trainer import Trainer
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+parser = argparse.ArgumentParser(description='Train SOHO-To-SDO translations')
+parser.add_argument('--base_dir', type=str, help='path to the results directory.')
 
-import torch
-from torch.utils.data import DataLoader
+parser.add_argument('--sdo_path', type=str, help='path to the SDO data.')
+parser.add_argument('--soho_path', type=str, help='path to the SOHO data.')
+parser.add_argument('--sdo_converted_path', type=str, help='path to store the converted SDO data.')
+parser.add_argument('--soho_converted_path', type=str, help='path to store the converted SOHO data.')
 
-from iti.data.dataset import SDODataset, SOHODataset, StorageDataset
-from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, ProgressCallback, \
-    SaveCallback, ValidationHistoryCallback
-from iti.trainer import Trainer, loop
+args = parser.parse_args()
+base_dir = args.base_dir
 
-base_dir = "/gss/r.jarolim/iti/soho_sdo_v25"
-
-sdo_path = "/gss/r.jarolim/data/ch_detection"
-sdo_converted_path = '/gss/r.jarolim/data/converted/sdo_2048'
-soho_path = "/gss/r.jarolim/data/soho_iti2021_prep"
-soho_converted_path = '/gss/r.jarolim/data/converted/soho_1024'
+sdo_path = args.sdo_path
+sdo_converted_path = args.sdo_converted_path
+soho_path = args.soho_path
+soho_converted_path = args.soho_converted_path
 
 prediction_dir = os.path.join(base_dir, 'prediction')
 os.makedirs(prediction_dir, exist_ok=True)
@@ -38,34 +41,25 @@ logging.basicConfig(
 trainer = Trainer(5, 5, upsampling=1, discriminator_mode=DiscriminatorMode.CHANNELS,
                   lambda_diversity=0, norm='in_rs_aff')
 trainer.cuda()
-trainer.train()
-start_it = trainer.resume(base_dir)
 
 # Init Dataset
+train_months = list(range(2, 10))
+test_months = [11, 12]
 
-sdo_train = SDODataset(sdo_path, patch_shape=(1024, 1024), resolution=2048, months=list(range(11)), years=list(range(2011, 2021)))
+sdo_train = SDODataset(sdo_path, patch_shape=(1024, 1024), resolution=2048, months=train_months,
+                       years=list(range(2011, 2021)))
 sdo_train = StorageDataset(sdo_train, sdo_converted_path,
                            ext_editors=[RandomPatchEditor((256, 256))])
 
-
-soho_train = SOHODataset(soho_path, resolution=1024, months=list(range(11)))
+soho_train = SOHODataset(soho_path, resolution=1024, months=train_months, years=list(range(1996, 2010)))
 soho_train = StorageDataset(soho_train, soho_converted_path,
                             ext_editors=[RandomPatchEditor((128, 128))])
 
-sdo_valid = SDODataset(sdo_path, patch_shape=(1024, 1024), resolution=2048, months=[11, 12], limit=100)
+sdo_valid = SDODataset(sdo_path, patch_shape=(1024, 1024), resolution=2048, limit=100, months=test_months)
 sdo_valid = StorageDataset(sdo_valid, sdo_converted_path, ext_editors=[RandomPatchEditor((256, 256))])
 
-soho_valid = SOHODataset(soho_path, resolution=1024, months=[11, 12], limit=100)
+soho_valid = SOHODataset(soho_path, resolution=1024, months=test_months, limit=100)
 soho_valid = StorageDataset(soho_valid, soho_converted_path, ext_editors=[RandomPatchEditor((128, 128))])
-
-sdo_iterator = loop(DataLoader(sdo_train, batch_size=1, shuffle=True, num_workers=8))
-soho_iterator = loop(DataLoader(soho_train, batch_size=1, shuffle=True, num_workers=8))
-
-# Init Callbacks
-history = HistoryCallback(trainer, base_dir)
-validation = ValidationHistoryCallback(trainer, soho_valid, sdo_valid, base_dir, log_iteration)
-progress = ProgressCallback(trainer)
-save = SaveCallback(trainer, base_dir)
 
 plot_settings_A = [
     {"cmap": cm.sdoaia171, "title": "EIT 171", 'vmin': -1, 'vmax': 1},
@@ -82,45 +76,6 @@ plot_settings_B = [
     {"cmap": "gray", "title": "HMI Magnetogram", 'vmin': -1, 'vmax': 1},
 ]
 
-soho_plot = SOHODataset(soho_path, patch_shape=(1024, 1024), months=[11, 12])
-sdo_plot = SDODataset(sdo_path, patch_shape=(2048, 2048), months=[11, 12])
-
-bab_callback = PlotBAB(sdo_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-
-aba_callback = PlotABA(soho_valid.sample(4), trainer, prediction_dir, log_iteration=log_iteration,
-                       plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-
-full_disc_aba_callback = PlotABA(soho_plot.sample(4),
-                                 trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
-                                 plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
-                                 plot_id='FULL_ABA')
-
-full_disc_bab_callback = PlotBAB(sdo_plot.sample(4),
-                                 trainer, prediction_dir, log_iteration=log_iteration, batch_size=1,
-                                 plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B,
-                                 plot_id='FULL_BAB')
-
-v_callback = VariationPlotBA(sdo_valid.sample(4), trainer, prediction_dir, 4, log_iteration=log_iteration,
-                             plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)
-
-callbacks = [save, history, progress, bab_callback, aba_callback, v_callback, full_disc_aba_callback,
-             full_disc_bab_callback, validation]
-
 # Start training
-for it in range(start_it, int(1e8)):
-    if it > 100000:
-        trainer.gen_ab.eval()  # fix running stats
-        trainer.gen_ba.eval()  # fix running stats
-    #
-    x_a, x_b = next(soho_iterator), next(sdo_iterator)
-    x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    trainer.discriminator_update(x_a, x_b)
-    #
-    x_a, x_b = next(soho_iterator), next(sdo_iterator)
-    x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
-    trainer.generator_update(x_a, x_b)
-    torch.cuda.synchronize()
-    #
-    for callback in callbacks:
-        callback(it)
+trainer.startBasicTraining(base_dir, soho_train, sdo_train, soho_valid, sdo_valid,
+                           plot_settings_A, plot_settings_B)

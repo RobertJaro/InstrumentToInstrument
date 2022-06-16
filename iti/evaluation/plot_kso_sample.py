@@ -4,7 +4,7 @@ from sunpy.map import Map
 
 from iti.data.dataset import KSOFlatDataset
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 from matplotlib import pyplot as plt
 

@@ -1,34 +1,30 @@
+import glob
+import os
 import shutil
 
-import pandas as pd
-from sunpy.map import Map
 from matplotlib import pyplot as plt
-import os
-import numpy as np
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-base_path = '/gss/r.jarolim/data/converted/hinode_continuum_img'
-shutil.rmtree(base_path)
-os.makedirs(base_path)
+from iti.data.dataset import HinodeDataset
 
-df = pd.read_csv('/gss/r.jarolim/data/hinode/file_list.csv', index_col=False, parse_dates=['date'])
-#df = df[df.date.dt.month == 12]
-df = df[(df.classification == 'feature')]
+base_path = '/gpfs/gpfs0/robert.jarolim/data/converted/hinode_continuum_img'
+os.makedirs(base_path, exist_ok=True)
 
-removed = []
-for f in df.file:
-    if not os.path.exists(f):
-        removed.append(f)
+hinode_files = glob.glob('/gpfs/gpfs0/robert.jarolim/data/iti/hinode_iti2022_prep/*.fits')
+hinode_train = HinodeDataset(hinode_files)
 
-values = []
-for f in df.file:
-    s_map = Map(f)
-    values += [np.std(s_map.data) / s_map.meta['EXPTIME']]
-    if np.std(s_map.data / s_map.meta['EXPTIME']) < 2500:
+loader = DataLoader(hinode_train, batch_size=1, shuffle=False, num_workers=4)
+
+for d, file in tqdm(zip(loader, hinode_files)):
+    img_path = os.path.join(base_path, os.path.basename(file).replace('fits', 'jpg'))
+    if os.path.exists(img_path):
         continue
-    s_map.plot()
-    plt.savefig(os.path.join(base_path, os.path.basename(f).replace('.fits', '.jpg')))
+    plt.figure(figsize=(2, 2))
+    plt.imshow(d[0, 0], cmap='gray', vmin=-1, vmax=1)
+    plt.axis('off')
+    plt.tight_layout(pad=0)
+    plt.savefig(img_path)
     plt.close()
 
-plt.hist(values, 100)
-plt.savefig('/gss/r.jarolim/data/converted/hinode_continuum_img/hist.jpg')
-plt.close()
+shutil.make_archive('/gpfs/gpfs0/robert.jarolim/data/converted/hinode_continuum_img', 'zip', '/gpfs/gpfs0/robert.jarolim/data/converted/hinode_continuum_img')

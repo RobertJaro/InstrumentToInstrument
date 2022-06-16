@@ -2,7 +2,7 @@ import os
 
 from iti.data.editor import RandomPatchEditor
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 import torch
 from matplotlib import pyplot as plt

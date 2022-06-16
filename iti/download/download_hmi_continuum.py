@@ -1,19 +1,21 @@
+import argparse
 import logging
 import multiprocessing
 import os
-from datetime import datetime
-from urllib.request import urlopen
+from datetime import datetime, timedelta
+from urllib import request
 
 import drms
 import numpy as np
 import pandas as pd
-from astropy.io.fits import HDUList
-from sunpy.map import Map
+from astropy.io import fits
+from sunpy.io.fits import header_to_fits
+from sunpy.util import MetaDict
 
 
 class HMIContinuumDownloader:
 
-    def __init__(self, ds_path, num_worker_threads=8, ignore_quality=False, series='hmi.Ic_720s'):
+    def __init__(self, ds_path, email, num_worker_threads=4, ignore_quality=False, series='hmi.Ic_720s'):
         self.series = series
         self.ignore_quality = ignore_quality
         self.ds_path = ds_path
@@ -27,29 +29,27 @@ class HMIContinuumDownloader:
                 logging.StreamHandler()
             ])
 
-        self.drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
+        self.drms_client = drms.Client(email=email, verbose=False)
 
     def download(self, data):
         header, segment, t = data
-        dir = os.path.join(self.ds_path, '%d' % header['WAVELNTH'])
-        map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
+        map_path = os.path.join(self.ds_path, '%s.fits' % t.isoformat('T', timespec='seconds'))
         if os.path.exists(map_path):
             return map_path
         # load map
         url = 'http://jsoc.stanford.edu' + segment
-        with urlopen(url) as url_request:
-            fits_data = url_request.read()
-        hdul = HDUList.fromstring(fits_data)
-        hdul.verify('silentfix')
-        data = hdul[1].data
-        header = {k: v for k, v in header.items() if not pd.isna(v)}
+        request.urlretrieve(url, filename=map_path)
+
         header['DATE_OBS'] = header['DATE__OBS']
-        s_map = Map(data, header)
-        os.makedirs(dir, exist_ok=True)
-        map_path = os.path.join(dir, '%s.fits' % t.isoformat('T', timespec='seconds'))
-        if os.path.exists(map_path):
-            os.remove(map_path)
-        s_map.save(map_path)
+        header = header_to_fits(MetaDict(header))
+        with fits.open(map_path, 'update') as f:
+            hdr = f[1].header
+            for k, v in header.items():
+                if pd.isna(v):
+                    continue
+                hdr[k] = v
+            f.verify('silentfix')
+
         return map_path
 
     def fetchDates(self, dates):
@@ -81,7 +81,14 @@ class HMIContinuumDownloader:
 
 
 if __name__ == '__main__':
-    fetcher = HMIContinuumDownloader(ds_path="/gss/r.jarolim/data/hmi_continuum")
-    # fetcher.fetchDates([datetime(2010, 3, 29) + i * timedelta(days=1) for i in
-    #                     range((datetime.now() - datetime(2010, 3, 29)) // timedelta(days=1))])
-    fetcher.fetchDates([datetime(2014, 12, 22)])
+    parser = argparse.ArgumentParser(description='Download SDO/HMI data')
+    parser.add_argument('--download_dir', type=str, help='path to the download directory.')
+    parser.add_argument('--email', type=str, help='registered email address for JSOC.')
+    args = parser.parse_args()
+
+    fetcher = HMIContinuumDownloader(ds_path=args.download_dir, email=args.email)
+    for y in range(2010, 2023):
+        dates = [datetime(y, 1, 1) + i * timedelta(days=1) for i in
+                 range((datetime(y + 1, 1, 1) - datetime(y, 1, 1)) // timedelta(days=1))]
+        dates = [d for d in dates if d.month in [2, 3, 4, 5, 6, 7, 8, 9, 11, 12]]
+        fetcher.fetchDates(dates)

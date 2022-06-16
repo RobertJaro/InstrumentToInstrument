@@ -236,11 +236,12 @@ class HistoryCallback(Callback):
         plt.close()
 
 class ValidationHistoryCallback(Callback):
-    def __init__(self, trainer: Trainer, data_set_A, data_set_B, path, log_iteration=1000):
+    def __init__(self, trainer: Trainer, data_set_A, data_set_B, path, log_iteration=1000, num_workers=4):
         self.trainer = trainer
         self.path = path
         self.data_set_A = data_set_A
         self.data_set_B = data_set_B
+        self.num_workers = num_workers
 
         self.loss = self.trainer.valid_loss
         super().__init__(log_iteration)
@@ -261,8 +262,8 @@ class ValidationHistoryCallback(Callback):
                 'loss_dis_a': [],
                 'loss_dis_b': [],
                 }
-        dl_A, dl_B = DataLoader(self.data_set_A, batch_size=2, shuffle=False, num_workers=4),\
-                     DataLoader(self.data_set_B, batch_size=2, shuffle=False, num_workers=4)
+        dl_A, dl_B = DataLoader(self.data_set_A, batch_size=2, shuffle=False, num_workers=self.num_workers),\
+                     DataLoader(self.data_set_B, batch_size=2, shuffle=False, num_workers=self.num_workers)
         for x_a, x_b in tqdm(zip(dl_A, dl_B), desc='Validation', total=len(dl_A)):
             x_a, x_b = x_a.float().cuda().detach(), x_b.float().cuda().detach()
             self.trainer.validate(x_a, x_b)

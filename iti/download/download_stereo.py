@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import shutil
@@ -7,9 +8,7 @@ from multiprocessing import Pool
 from random import sample
 
 import drms
-import numpy as np
 from astropy import units as u
-from astropy.io.fits import getheader
 from dateutil.relativedelta import relativedelta
 from sunpy.map import Map
 from sunpy.net import Fido, attrs as a
@@ -65,8 +64,13 @@ class STEREODownloader:
 
 
 if __name__ == '__main__':
-    base_path = '/localdata/USER/rja/stereo_iti2021'  # sys.argv[1]
-    n_worker = 8  # int(sys.argv[2])
+    parser = argparse.ArgumentParser(description='Download STEREO data')
+    parser.add_argument('--download_dir', type=str, help='path to the download directory.')
+    parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
+
+    args = parser.parse_args()
+    base_path = args.download_dir
+    n_workers = args.n_workers
 
     drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
     download_util = STEREODownloader(base_path)
@@ -76,26 +80,27 @@ if __name__ == '__main__':
             logging.StreamHandler()
         ])
 
-    existing_dates = set([os.path.basename(f).replace('.fits', '')[:10] for f in glob('/localdata/USER/rja/stereo_iti2021/**/*.fits')])
+    existing_dates = set(
+        [os.path.basename(f).replace('.fits', '')[:10] for f in glob('/localdata/USER/rja/stereo_iti2021/**/*.fits')])
 
     start_date = datetime(2008, 5, 1, 0, 0)
     end_date = datetime.now()
     num_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
     month_dates = [start_date + relativedelta(months=i) for i in range(num_months)]
     for date in month_dates:
-            samples = []
-            for i in range(((date + relativedelta(months=1)) - date).days):
-                search_date = date + timedelta(days=i)
-                if '%04d-%02d-%02d' % (search_date.year, search_date.month, search_date.day) in existing_dates:
-                    continue
-                search = Fido.search(a.Time(search_date, search_date + timedelta(minutes=60)),
-                                     a.Provider('SSC'), a.Instrument('SECCHI'), a.Wavelength(171 * u.AA))
-                if search.file_num == 0:
-                    continue
-                dates = search['vso']['Start Time']
-                sources = search['vso']['Source']
-                samples += [sample([(d.datetime, s) for d, s in zip(dates, sources)], 1)[0]]
+        samples = []
+        for i in range(((date + relativedelta(months=1)) - date).days):
+            search_date = date + timedelta(days=i)
+            if '%04d-%02d-%02d' % (search_date.year, search_date.month, search_date.day) in existing_dates:
+                continue
+            search = Fido.search(a.Time(search_date, search_date + timedelta(minutes=60)),
+                                 a.Provider('SSC'), a.Instrument('SECCHI'), a.Wavelength(171 * u.AA))
+            if search.file_num == 0:
+                continue
+            dates = search['vso']['Start Time']
+            sources = search['vso']['Source']
+            samples += [sample([(d.datetime, s) for d, s in zip(dates, sources)], 1)[0]]
 
-            logging.info("TOTAL DAYS (%s): %d" % (date.isoformat(), len(samples)))
-            with Pool(n_worker) as p:
-                [None for _ in tqdm(p.imap_unordered(download_util.downloadDate, samples), total=len(samples))]
+        logging.info("TOTAL DAYS (%s): %d" % (date.isoformat(), len(samples)))
+        with Pool(n_worker) as p:
+            [None for _ in tqdm(p.imap_unordered(download_util.downloadDate, samples), total=len(samples))]

@@ -10,7 +10,7 @@ from tqdm import tqdm
 from iti.data.editor import NormalizeRadiusEditor, KSOPrepEditor, LimbDarkeningCorrectionEditor, KSOFilmPrepEditor, \
     LoadFITSEditor
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 from matplotlib import pyplot as plt
 

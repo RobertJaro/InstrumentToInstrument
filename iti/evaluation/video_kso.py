@@ -6,7 +6,7 @@ from datetime import datetime
 from dateutil.parser import parse
 from tqdm import tqdm
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 from iti.translate import KSOLowToHigh
 

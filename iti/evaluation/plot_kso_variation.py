@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 import torch
 from matplotlib import pyplot as plt
@@ -12,8 +12,8 @@ from iti.trainer import Trainer
 import numpy as np
 
 resolution = 1024
-base_path = "/gss/r.jarolim/iti/kso_quality_1024_v7"
-epoch = 140000
+base_path = "/gss/r.jarolim/iti/kso_quality_1024_v9"
+epoch = 360000
 os.makedirs(os.path.join(base_path, 'evaluation'), exist_ok=True)
 
 q1_dataset = KSOFlatDataset("/gss/r.jarolim/data/kso_synoptic", resolution)

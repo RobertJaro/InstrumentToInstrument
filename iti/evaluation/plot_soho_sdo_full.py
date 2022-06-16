@@ -2,7 +2,7 @@ import os
 
 from skimage.io import imsave
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 import torch
 from matplotlib import pyplot as plt

@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import shutil
@@ -95,8 +96,13 @@ class SOHODownloader:
 
 
 if __name__ == '__main__':
-    base_path = '/localdata/USER/rja/soho_iti2021'  # sys.argv[1]
-    n_worker = 7  # int(sys.argv[2])
+    parser = argparse.ArgumentParser(description='Download SOHO data')
+    parser.add_argument('--download_dir', type=str, help='path to the download directory.')
+    parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
+
+    args = parser.parse_args()
+    base_path = args.download_dir
+    n_workers = args.n_workers
 
     drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
     download_util = SOHODownloader(base_path)
@@ -120,5 +126,5 @@ if __name__ == '__main__':
             step = int(np.floor(len(dates) / 60)) if len(dates) > 60 else 1
             dates = [d.datetime for d in dates[::step]]
 
-            with Pool(n_worker) as p:
+            with Pool(n_workers) as p:
                 [None for _ in tqdm(p.imap_unordered(download_util.downloadDate, dates), total=len(dates))]

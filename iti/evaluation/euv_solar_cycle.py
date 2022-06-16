@@ -2,17 +2,19 @@ import datetime
 import os
 
 import pandas
+import pandas as pd
 import torch
 from dateutil.parser import parse
+from iti.trainer import skip_invalid
+from sunpy.visualization.colormaps import cm
+
 from iti.data.editor import soho_norms, sdo_norms, stereo_norms
 
-from iti.data.dataset import SOHODataset, STEREODataset, SDODataset
+from iti.data.dataset import SOHODataset, STEREODataset, SDODataset, get_intersecting_files
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.translate import SOHOToSDOEUV
-
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+from iti.translate import SOHOToSDOEUV, SOHOToSDO
 
 from iti.translate import STEREOToSDO
 
@@ -21,7 +23,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 # init
-base_path = '/gss/r.jarolim/iti/euv_comparison'
+base_path = '/gpfs/gpfs0/robert.jarolim/iti/euv_comparison_v2'
 os.makedirs(base_path, exist_ok=True)
 df_path = os.path.join(base_path, 'data.csv')
 
@@ -31,16 +33,27 @@ df = pandas.DataFrame(columns={'date': [], 'value': [], 'type': [], 'wl': []}) i
 
 # raise Exception('break')
 # create translator
+# df = df[(df.type != 'STEREO') & (df.type != 'STEREO-ITI')]
 df = df[(df.type != 'SOHO') & (df.type != 'SOHO-ITI')]
-translator_soho = SOHOToSDOEUV(model_path='/gss/r.jarolim/iti/soho_sdo_euv_v1/generator_AB.pt')
-translator_stereo = STEREOToSDO(model_path='/gss/r.jarolim/iti/stereo_v7/generator_AB.pt')
+# df = df[(df.type != 'SDO')]
+translator_soho = SOHOToSDO(model_path='/gpfs/gpfs0/robert.jarolim/iti/soho_sdo_v4/generator_AB.pt')
+translator_stereo = STEREOToSDO(model_path='/gpfs/gpfs0/robert.jarolim/iti/stereo_to_sdo_v1/generator_AB.pt')
+
+def filter_files(files):
+    dates = [parse(os.path.basename(f).split('.')[0])for f in files[0]]
+    df = pd.DataFrame({'date':dates, 'idx': list(range(len(files[0])))})
+    df = df.set_index('date').groupby(pd.Grouper(freq='5D')).first()
+    idx = df[~pd.isna(df['idx'])]['idx'].astype(np.int)
+    return np.array(files)[:, idx].tolist()
 
 print('########## load SOHO ##########')
-soho_dataset = SOHODataset("/gss/r.jarolim/data/soho_iti2021_prep", resolution=1024, n_samples=1000,
-                           wavelengths=[171,195,284,304])
+soho_files = get_intersecting_files("/gpfs/gpfs0/robert.jarolim/data/iti/soho_iti2021_prep", [171, 195, 284, 304, 'mag', ],
+                               ext='.fits')
+soho_files = filter_files(soho_files)
+soho_dataset = SOHODataset(soho_files, resolution=1024, wavelengths=None)
 soho_iterator = DataLoader(soho_dataset, batch_size=1, shuffle=False, num_workers=12)
 
-soho_dates = [parse(b.split('.')[0]) for b in soho_dataset.basenames]
+soho_dates = [parse(soho_dataset.getId(i)) for i in range(len(soho_dataset))]
 with torch.no_grad():
     for soho_img, date in tqdm(zip(soho_iterator, soho_dates), total=len(soho_iterator)):
         soho_img = soho_img.cuda()
@@ -58,90 +71,104 @@ with torch.no_grad():
 
 df.to_csv(df_path)
 
-# print('########## load additional SOHO ##########')
-# soho_hmi_dataset = SOHOHMIDataset('/gss/r.jarolim/data/soho_iti2021_prep', '/gss/r.jarolim/data/ch_detection/6173',
-#                                   resolution=1024, n_samples=1000)
-# soho_hmi_iterator = DataLoader(soho_hmi_dataset, batch_size=1, shuffle=False, num_workers=12)
+# print('########## load STEREO ##########')
+# stereo_files = get_intersecting_files("/gpfs/gpfs0/robert.jarolim/data/iti/stereo_iti2021_prep",
+#                                     [171, 195, 284, 304, ], ext='.fits')
+# stereo_files = filter_files(stereo_files)
+# stereo_dataset = STEREODataset(stereo_files)
+# stereo_iterator = DataLoader(stereo_dataset, batch_size=1, shuffle=False, num_workers=12)
 #
-# soho_dates = [parse(b.split('.')[0]) for b in soho_hmi_dataset.basenames]
+# stereo_dates = [parse(stereo_dataset.getId(i)) for i in range(len(stereo_dataset))]
 # with torch.no_grad():
-#     for soho_img, date in tqdm(zip(soho_hmi_iterator, soho_dates), total=len(soho_hmi_iterator)):
-#         soho_img = soho_img.cuda()
-#         iti_img = translator_soho.generator(soho_img)
-#         # flatten batch + remove magnetogram
-#         iti_img = iti_img[0, :-1].detach().cpu().numpy()
-#         soho_img = soho_img[0, :-1].detach().cpu().numpy()
-#         for img, wl in zip(soho_img, [171, 195, 284, 304]):
-#             v = np.mean(soho_norms[wl].inverse((img + 1) / 2))
-#             df = df.append({'date': date, 'value': v, 'type': 'SOHO', 'wl': wl}, ignore_index=True)
+#     for stereo_img, date in tqdm(zip(stereo_iterator, stereo_dates), total=len(stereo_iterator)):
+#         stereo_img = stereo_img.cuda()
+#         iti_img = translator_stereo.generator(stereo_img)
+#         iti_img = iti_img[0].detach().cpu().numpy()
+#         stereo_img = stereo_img[0].detach().cpu().numpy()
+#         #
+#         for img, wl in zip(stereo_img, [171, 195, 284, 304]):
+#             v = np.mean(stereo_norms[wl].inverse((img + 1) / 2))
+#             df = df.append({'date': date, 'value': v, 'type': 'STEREO', 'wl': wl}, ignore_index=True)
 #         for img, wl in zip(iti_img, [171, 193, 211, 304]):
 #             v = np.mean(sdo_norms[wl].inverse((img + 1) / 2))
-#             df = df.append({'date': date, 'value': v, 'type': 'SOHO-ITI', 'wl': wl}, ignore_index=True)
+#             df = df.append({'date': date, 'value': v, 'type': 'STEREO-ITI', 'wl': wl}, ignore_index=True)
+#         #
+#         fig, axs = plt.subplots(1, 2, figsize=(8, 4))
+#         axs[0].imshow(stereo_img[-1], cmap=cm.sdoaia304, vmin=-1, vmax=1)
+#         axs[1].imshow(iti_img[-1], cmap=cm.sdoaia304, vmin=-1, vmax=1)
+#         axs[0].set_axis_off(), axs[1].set_axis_off()
+#         plt.tight_layout(pad=0)
+#         plt.savefig(os.path.join(base_path, 'stereo_%s.jpg' % date.isoformat('T')))
+#         plt.close()
 #
 # df.to_csv(df_path)
 
-print('########## load STEREO ##########')
-stereo_dataset = STEREODataset("/gss/r.jarolim/data/stereo_iti2021_prep", n_samples=1000)
-stereo_iterator = DataLoader(stereo_dataset, batch_size=1, shuffle=False, num_workers=12)
-
-stereo_dates = [parse(b.split('.')[0]) for b in stereo_dataset.basenames]
-with torch.no_grad():
-    for stereo_img, date in tqdm(zip(stereo_iterator, stereo_dates), total=len(stereo_iterator)):
-        stereo_img = stereo_img.cuda()
-        iti_img = translator_stereo.generator(stereo_img)
-        iti_img = iti_img[0].detach().cpu().numpy()
-        stereo_img = stereo_img[0].detach().cpu().numpy()
-
-        for img, wl in zip(stereo_img, [171, 195, 284, 304]):
-            v = np.mean(stereo_norms[wl].inverse((img + 1) / 2))
-            df = df.append({'date': date, 'value': v, 'type': 'STEREO', 'wl': wl}, ignore_index=True)
-        for img, wl in zip(iti_img, [171, 193, 211, 304]):
-            v = np.mean(sdo_norms[wl].inverse((img + 1) / 2))
-            df = df.append({'date': date, 'value': v, 'type': 'STEREO-ITI', 'wl': wl}, ignore_index=True)
-
-df.to_csv(df_path)
-
-print('########## load SDO ##########')
+# print('########## load SDO ##########')
+# sdo_files = get_intersecting_files("/gpfs/gpfs0/robert.jarolim/data/iti/sdo", ['171', '193', '211', '304', '6173'], ext='.fits')
+# sdo_files = filter_files(sdo_files)
 #
-sdo_dataset = SDODataset("/gss/r.jarolim/data/ch_detection", resolution=4096, n_samples=1000)
-sdo_iterator = DataLoader(sdo_dataset, batch_size=1, shuffle=False, num_workers=4, )
-sdo_dates = [parse(b.split('.')[0]) for b in sdo_dataset.basenames]
-
-for sdo_img, date in tqdm(zip(sdo_iterator, sdo_dates), total=len(sdo_iterator)):
-    sdo_img = sdo_img[0, :-1].detach().cpu().numpy()
-    for img, wl in zip(sdo_img, [171, 193, 211, 304]):
-        v = np.mean(sdo_norms[wl].inverse((img + 1) / 2))
-        df = df.append({'date': date, 'value': v, 'type': 'SDO', 'wl': wl}, ignore_index=True)
-
-df.to_csv(df_path)
+# sdo_dataset = SDODataset(sdo_files, resolution=4096)
+# sdo_iterator = DataLoader(sdo_dataset, batch_size=1, shuffle=False, num_workers=12, )
+#
+# sdo_dates = [parse(sdo_dataset.getId(i)) for i in range(len(sdo_dataset))]
+# for sdo_img, date in tqdm(skip_invalid(zip(sdo_iterator, sdo_dates)), total=len(sdo_iterator)):
+#     sdo_img = sdo_img[0, :-1].detach().cpu().numpy()
+#     for img, wl in zip(sdo_img, [171, 193, 211, 304]):
+#         v = np.mean(sdo_norms[wl].inverse((img + 1) / 2))
+#         df = df.append({'date': date, 'value': v, 'type': 'SDO', 'wl': wl}, ignore_index=True)
+#
+# df.to_csv(df_path)
 
 df = df.sort_values('date')
-# invert normalization
+df = df.set_index('date')
+
+eit_calibration = {'171': [113.69278, 40.340622], '195': [60.60053, 31.752682], '284': [4.7249465, 3.9555929], '304': [64.73511, 26.619505]}
+secchi_calibration = {'171': [167.85056, 63.00634], '195': [63.2936, 36.515015], '284': [15.409555, 34.620598], '304': [450.23215, 152.41183]}
+aia_calibration = {'171': [148.90274, 62.101795], '193': [146.01889, 71.47675], '211': [44.460854, 27.592617], '304': [46.21493, 18.522688]}
+
+channel_mapping = {s:t for s,t in zip([171, 195, 284, 304], [171, 193, 211, 304])}
+
 fig, axs = plt.subplots(4, 1, sharex=True, figsize=(8, 8))
 lines = []
+n_rolling = '60D'
 
 for ax, d in zip(axs, [df[(df.type == 'SDO') & (df.wl == wl)] for wl in [171, 193, 211, 304]]):
-    line = ax.plot(d.date, d.value, label='SDO', zorder=10)
+    values = d.value.rolling(n_rolling, center=True).median()
+    std = d.value.rolling(n_rolling, center=True).std()
+    line = ax.plot(d.index, values, label='SDO', zorder=10)
+    ax.fill_between(d.index, values - std, values + std, zorder=10, color='blue', alpha=0.2)
 
 lines += line
 
-for ax, d in zip(axs, [df[(df.type == 'SOHO') & (df.wl == wl)] for wl in [171, 195, 284, 304]]):
-    line = ax.plot(d.date, d.value, label='SOHO', zorder=6)
+for ax, wl in zip(axs, [171, 195, 284, 304]):
+    d = df[(df.type == 'SOHO') & (df.wl == wl)]
+    values = d.rolling(n_rolling, center=True).median().value
+    eit_mean, eit_std = eit_calibration[str(wl)]
+    aia_mean, aia_std = aia_calibration[str(channel_mapping[wl])]
+    values = (np.array(values) - eit_mean) * (aia_std / eit_std) + aia_mean
+    line = ax.plot(d.index, values, label='SOHO', zorder=6)
 
 lines += line
 
-for ax, d in zip(axs, [df[(df.type == 'STEREO') & (df.wl == wl)] for wl in [171, 195, 284, 304]]):
-    line = ax.plot(d.date, d.value, label='STEREO', zorder=7)
+for ax, wl in zip(axs, [171, 195, 284, 304]):
+    d = df[(df.type == 'STEREO') & (df.wl == wl)]
+    values = d.value.rolling(n_rolling, center=True).median()
+    secchi_mean, secchi_std = secchi_calibration[str(wl)]
+    aia_mean, aia_std = aia_calibration[str(channel_mapping[wl])]
+    values = (np.array(values) - secchi_mean) * (aia_std / secchi_std) + aia_mean
+    line = ax.plot(d.index, values, label='STEREO', zorder=7)
 
 lines += line
 
 for ax, d in zip(axs, [df[(df.type == 'SOHO-ITI') & (df.wl == wl)] for wl in [171, 193, 211, 304]]):
-    line = ax.plot(d.date, d.value, label='SOHO - ITI', zorder=8)
+    values = d.value.rolling(n_rolling, center=True).median()
+    line = ax.plot(d.index, values, label='SOHO - ITI', zorder=8)
 
 lines += line
 
 for ax, d in zip(axs, [df[(df.type == 'STEREO-ITI') & (df.wl == wl)] for wl in [171, 193, 211, 304]]):
-    line = ax.plot(d.date, d.value, label='STEREO - ITI', zorder=9)
+    values = d.value.rolling(n_rolling, center=True).median()
+    line = ax.plot(d.index, values, label='STEREO - ITI', zorder=9)
 
 lines += line
 
@@ -150,124 +177,66 @@ axs[1].set_title('193/195')
 axs[2].set_title('211/284')
 axs[3].set_title('304')
 
-axs[3].set_ylim(None, 150)
-
 fig.tight_layout()
 fig.savefig(os.path.join(base_path, 'light_curve.jpg'), dpi=300)
 plt.close(fig)
 
 fig = plt.figure(figsize=(8, .8))
-fig.legend(lines, ['SDO', 'SOHO', 'STEREO', 'SOHO - ITI', 'STEREO - ITI'], loc='lower center', ncol=3, fontsize=14)
+fig.legend(lines, ['SDO', 'SOHO - baseline', 'STEREO - baseline', 'SOHO - ITI', 'STEREO - ITI'], loc='lower center', ncol=3, fontsize=14)
 fig.savefig(os.path.join(base_path, 'lc_legend.jpg'), dpi=300)
 plt.close(fig)
 
-
-#################################################
-# CORRELATION
-#################################################
-def to_float(dates,ref):
-    return np.array([(d - ref).total_seconds() for d in dates])
-
-def correlation(dates_1, values_1, dates_2, values_2):
-    min_date = max(min(dates_1), min(dates_2))
-    max_date = min(max(dates_1), max(dates_2))
-    interp_dates = [datetime.datetime(year=min_date.year, month=min_date.month, day=min_date.day) + i * datetime.timedelta(days=1)
-                    for i in range((max_date - min_date) // datetime.timedelta(days=1))]
-    #
-    interp_dates = np.array(interp_dates)
-    dates_1, values_1 = np.array(dates_1), np.array(values_1)
-    dates_2, values_2 = np.array(dates_2), np.array(values_2)
-    #
-    condition = np.logical_and(dates_1 > min_date, dates_1 < max_date)
-    values_1_interp = np.interp(to_float(interp_dates, min_date), to_float(dates_1[condition], min_date), values_1[condition])
-    condition = np.logical_and(dates_2 > min_date, dates_2 < max_date)
-    values_2_interp = np.interp(to_float(interp_dates, min_date), to_float(dates_2[condition], min_date), values_2[condition])
-    #
-    w = 60
-    smooth_1 = np.convolve(values_1_interp, np.ones((w,)) / w, mode='valid')
-    smooth_2 = np.convolve(values_2_interp, np.ones((w,)) / w, mode='valid')
-    interp_dates = interp_dates[w//2:-(w//2 - 1)]
-    # smooth_1 = (smooth_1 - np.mean(smooth_1)) / np.std(smooth_1)
-    # smooth_2 = (smooth_2 - np.mean(smooth_2)) / np.std(smooth_2)
-    #
-    mse = np.mean(np.abs(smooth_1 - smooth_2)) / np.mean(smooth_1)
-    corr = np.corrcoef(smooth_1, smooth_2)
-    lin_fit = np.polyfit(smooth_1, smooth_2, 1)
-    #
-    return corr[0, 1], mse, lin_fit, (interp_dates, smooth_1, smooth_2)
-
-correlation_coeff = {'SDO':{},'SOHO':{}, 'STEREO':{},'SOHO-ITI':{},'STEREO-ITI':{}}
-mse_loss = {'SDO':{},'SOHO':{}, 'STEREO':{},'SOHO-ITI':{},'STEREO-ITI':{}}
-fit_coeff = {'SDO':{},'SOHO':{}, 'STEREO':{},'SOHO-ITI':{},'STEREO-ITI':{}}
-fig, axs = plt.subplots(4, 4, figsize=(8, 8))
-
-for row, wl in zip(axs, [171, 193, 211, 304]):
-    sdo = df[(df.type == 'SDO') & (df.wl == wl)]
-    corr, mse, coeff, (dates, sdo_lc, _) = correlation([d.to_pydatetime() for d in sdo.date], sdo.value,
-                                            [d.to_pydatetime() for d in sdo.date], sdo.value)
-    # ax.plot([min(sdo_lc), max(sdo_lc)], [min(sdo_lc), max(sdo_lc)], color='black')
-    correlation_coeff['SDO'][wl] = round(corr, 3)
-    mse_loss['SDO'][wl] = round(mse, 3)
-    fit_coeff['SDO'][wl] = np.round(coeff, 3)
-
-for ax, wl, wl_soho in zip(axs[:, 0], [171, 193, 211, 304], [171, 195, 284, 304]):
-    sdo = df[(df.type == 'SDO') & (df.wl == wl)]
-    ref = df[(df.type == 'SOHO') & (df.wl == wl_soho)]
-    corr, mse, coeff, (dates, sdo_lc, ref_lc) = correlation([d.to_pydatetime() for d in sdo.date], sdo.value,
-                                                [d.to_pydatetime() for d in ref.date], ref.value)
-    ax.scatter(sdo_lc, ref_lc)
-    ax.plot(sdo_lc, np.poly1d(coeff)(sdo_lc), '--k', label='SOHO')
-    correlation_coeff['SOHO'][wl] = round(corr, 3)
-    mse_loss['SOHO'][wl] = round(mse, 3)
-    fit_coeff['SOHO'][wl] = np.round(coeff, 3)
-
-for ax, wl, wl_stereo in zip(axs[:, 1], [171, 193, 211, 304], [171, 195, 284, 304]):
-    sdo = df[(df.type == 'SDO') & (df.wl == wl)]
-    ref = df[(df.type == 'STEREO') & (df.wl == wl_stereo)]
-    corr, mse, coeff, (dates, sdo_lc, ref_lc) = correlation([d.to_pydatetime() for d in sdo.date], sdo.value,
-                                                [d.to_pydatetime() for d in ref.date], ref.value)
-    ax.scatter(sdo_lc, ref_lc)
-    ax.plot(sdo_lc, np.poly1d(coeff)(sdo_lc), '--k', label='STEREO')
-    correlation_coeff['STEREO'][wl] = round(corr, 3)
-    mse_loss['STEREO'][wl] = round(mse, 3)
-    fit_coeff['STEREO'][wl] = np.round(coeff, 3)
-
-for ax, wl in zip(axs[:, 2], [171, 193, 211, 304]):
-    sdo = df[(df.type == 'SDO') & (df.wl == wl)]
-    ref = df[(df.type == 'SOHO-ITI') & (df.wl == wl)]
-    corr, mse, coeff, (dates, sdo_lc, ref_lc) = correlation([d.to_pydatetime() for d in sdo.date], sdo.value,
-                                                [d.to_pydatetime() for d in ref.date], ref.value)
-    ax.scatter(sdo_lc, ref_lc)
-    ax.plot(sdo_lc, np.poly1d(coeff)(sdo_lc), '--k', label='SOHO-ITI')
-    correlation_coeff['SOHO-ITI'][wl] = round(corr, 3)
-    mse_loss['SOHO-ITI'][wl] = round(mse, 3)
-    fit_coeff['SOHO-ITI'][wl] = np.round(coeff, 3)
-
-for ax, wl in zip(axs[:, 3], [171, 193, 211, 304]):
-    sdo = df[(df.type == 'SDO') & (df.wl == wl)]
-    ref = df[(df.type == 'STEREO-ITI') & (df.wl == wl)]
-    corr, mse, coeff, (dates, sdo_lc, ref_lc) = correlation([d.to_pydatetime() for d in sdo.date], list(sdo.value),
-                                                [d.to_pydatetime() for d in ref.date], list(ref.value))
-    ax.scatter(sdo_lc, ref_lc)
-    ax.plot(sdo_lc, np.poly1d(coeff)(sdo_lc), '--k', label='STEREO-ITI')
-    # ax.plot(dates, ref_lc, label='STEREO - ITI')
-    correlation_coeff['STEREO-ITI'][wl] = round(corr, 3)
-    mse_loss['STEREO-ITI'][wl] = round(mse, 3)
-    fit_coeff['STEREO-ITI'][wl] = np.round(coeff, 3)
-
-
-[ax.legend() for ax in axs]
-axs[0, 0].set_title('171')
-axs[1, 0].set_title('193/195')
-axs[2, 0].set_title('211/284')
-axs[3, 0].set_title('304')
-
-#axs[3].set_ylim(None, 150)
-
-fig.tight_layout()
-fig.savefig(os.path.join(base_path, 'correlation.jpg'), dpi=300)
-plt.close(fig)
-
-pandas.DataFrame(correlation_coeff)
-pandas.DataFrame(mse_loss)
-pandas.DataFrame(fit_coeff)
+df['date'] = df.index
+maes = []
+ccs = []
+with open(os.path.join(base_path, 'stereo_evaluation.txt'), 'w') as f:
+    for wl in [171, 195, 284, 304]:
+        secchi_mean, secchi_std = secchi_calibration[str(wl)]
+        aia_wl = channel_mapping[wl]
+        aia_mean, aia_std = aia_calibration[str(aia_wl)]
+        #
+        d = df[(df.type == 'STEREO') & (df.wl == wl)]
+        stereo_values = d.groupby(pd.Grouper(key='date',freq='M')).median()
+        #
+        d = df[(df.type == 'STEREO-ITI') & (df.wl == aia_wl)]
+        iti_values = d.groupby(pd.Grouper(key='date',freq='M')).median()
+        #
+        d = df[(df.type == 'SDO') & (df.wl == aia_wl)]
+        sdo_values = d.groupby(pd.Grouper(key='date',freq='M')).median()
+        #
+        sdo_med = []
+        stereo_med = []
+        calibrated_med = []
+        iti_med = []
+        for d, stereo_v, iti_v in zip(stereo_values.index, stereo_values.value, iti_values.value):
+            sdo_v = sdo_values[sdo_values.index == d].value
+            if len(sdo_v) == 0:
+                continue
+            calibrated_v = (np.array(stereo_v) - secchi_mean) * (aia_std / secchi_std) + aia_mean
+            sdo_med += [float(sdo_v)]
+            stereo_med += [stereo_v]
+            iti_med += [iti_v]
+            calibrated_med += [calibrated_v]
+        #
+        print(wl, 'MAE', file=f)
+        mae_calibrated = np.nanmean(np.abs(np.array(sdo_med) - np.array(calibrated_med)))
+        print('calibrated', mae_calibrated, file=f)
+        print('original', np.nanmean(np.abs(np.array(sdo_med) - np.array(stereo_med))), file=f)
+        mae_iti = np.nanmean(np.abs(np.array(sdo_med) - np.array(iti_med)))
+        print('iti', mae_iti, file=f)
+        #
+        print(wl, 'CC', file=f)
+        cond = ~np.isnan(stereo_med) & ~np.isnan(sdo_med)
+        cc_calibrated = np.corrcoef(np.array(sdo_med)[cond], np.array(calibrated_med)[cond])[0, 1]
+        print('calibrated', cc_calibrated, file=f)
+        print('original', np.corrcoef(np.array(sdo_med)[cond], np.array(stereo_med)[cond])[0, 1], file=f)
+        cc_iti = np.corrcoef(np.array(sdo_med)[cond], np.array(iti_med)[cond])[0, 1]
+        print('iti', cc_iti, file=f)
+        maes += [(mae_calibrated, mae_iti)]
+        ccs += [(cc_calibrated, cc_iti)]
+    print('AVG', 'MAE', file=f)
+    print('calibrated', np.mean(np.array(maes)[:, 0]), file=f)
+    print('iti', np.mean(np.array(maes)[:, 1]), file=f)
+    print('AVG', 'CC', file=f)
+    print('calibrated', np.mean(np.array(ccs)[:, 0]), file=f)
+    print('iti', np.mean(np.array(ccs)[:, 1]), file=f)

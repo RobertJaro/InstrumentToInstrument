@@ -1,8 +1,9 @@
 import glob
 import os
+import shutil
+from multiprocessing import Pool
 from warnings import simplefilter
 
-import numpy as np
 from matplotlib import pyplot as plt
 from sunpy.map import Map
 from sunpy.visualization.colormaps import cm
@@ -10,26 +11,48 @@ from tqdm import tqdm
 
 from iti.data.editor import soho_norms
 
-plot_path = '/gss/r.jarolim/data/converted/soho_iti2021_prep_imgs'
-data_path = '/gss/r.jarolim/data/soho_iti2021_prep'
+plot_path = '/gpfs/gpfs0/robert.jarolim/data/iti/soho_imgs'
+data_path = '/gpfs/gpfs0/robert.jarolim/data/iti/soho_iti2021_prep/304'
 os.makedirs(plot_path, exist_ok=True)
 
-dirs = ['171', '195', '284', '304', 'mag', ]
-cmaps = [cm.sdoaia171, cm.sdoaia193, cm.sdoaia211, cm.sdoaia304, 'gray']
+files = sorted(glob.glob(os.path.join(data_path, '*.fits')))
+cmap = cm.sdoaia304
+norm = soho_norms[304]
 
-basenames = [[os.path.basename(path) for path in glob.glob('%s/%s/*.fits' % (data_path, dir))] for
-             dir in dirs]
-basenames = set(basenames[0]).intersection(*basenames)
 
-for basename in tqdm(basenames):
+def plot(file):
     simplefilter('ignore')
-    soho_cube = [Map('%s/%s/%s' % (data_path, dir, basename)) for dir in dirs]
+    s_map = Map(file)
     #
-    fig, axs = plt.subplots(1, 5, figsize=(15, 3))
-    [ax.set_axis_off() for ax in np.ravel(axs)]
-    for ax, s_map, cmap, norm in zip(axs, soho_cube, cmaps, soho_norms.values()):
-        s_map = s_map.rotate(recenter=True)
-        s_map.plot(axes=ax, cmap=cmap, norm=norm, title=None)
-    plt.tight_layout(0)
-    fig.savefig(os.path.join(plot_path, '%s') % basename.replace('.fits', '.jpg'))
-    plt.close(fig)
+    plt.figure(figsize=(2, 2))
+    plt.imshow(s_map.data, cmap=cmap, norm=norm)
+    plt.axis('off')
+    plt.tight_layout(pad=0)
+    plt.savefig(os.path.join(plot_path, os.path.basename(file).replace('fits', 'jpg')), dpi=100)
+    plt.close()
+
+
+with Pool(2) as p:
+    [None for _ in tqdm(p.imap_unordered(plot, files), total=len(files))]
+
+shutil.make_archive('/gpfs/gpfs0/robert.jarolim/data/iti/soho_imgs', 'zip', '/gpfs/gpfs0/robert.jarolim/data/iti/soho_imgs')
+
+to_remove = [
+    '1997-07-25T02:20:19.fits',
+    '2005-08-24T01:19:35.fits',
+    '2009-06-04T07:19:19.fits',
+    '2014-06-17T01:21:20.fits',
+    '2020-11-01T01:19:42.fits',
+]
+
+wls = [171, 195, 211, 304]
+for bn in to_remove:
+    for wl in wls:
+        f = os.path.join('/gpfs/gpfs0/robert.jarolim/data/iti/soho_iti2021_prep/%s/%s' % (wl, bn))
+        if os.path.exists(f):
+            print(f)
+            os.remove(f)
+    f = os.path.join('/gpfs/gpfs0/robert.jarolim/data/converted/soho_1024/%s' % (bn.replace('fits', 'npy')))
+    if os.path.exists(f):
+        print(f)
+        os.remove(f)

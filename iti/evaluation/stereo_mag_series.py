@@ -15,7 +15,7 @@ from iti.translate import STEREOToSDOMagnetogram
 
 from astropy import units as u
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 from matplotlib import pyplot as plt
 

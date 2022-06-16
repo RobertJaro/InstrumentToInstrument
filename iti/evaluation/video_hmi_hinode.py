@@ -8,7 +8,7 @@ from sunpy.physics.differential_rotation import solar_rotate_coordinate
 from iti.data.align import alignMaps
 from iti.translate import HMIToHinode
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 
 import numpy as np
 from matplotlib import pyplot as plt

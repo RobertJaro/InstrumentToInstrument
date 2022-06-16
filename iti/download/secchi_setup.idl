@@ -1,0 +1,54 @@
+;FILE_MKDIR,"/localdata/USER/rja/stereo_prep/train/secchi_171/"
+;cd, "/localdata/USER/rja/stereo_prep/train/secchi_171/"
+;secchi_prep, FILE_SEARCH("/localdata/USER/rja/stereo/train/secchi_171/*"), /write_fts, save_path = "/localdata/USER/rja/stereo_prep/train/secchi_171/", OUTSIZE=1024
+
+;FILE_MKDIR,"/localdata/USER/rja/stereo_prep/train/secchi_195/"
+;cd, "/localdata/USER/rja/stereo_prep/train/secchi_195/"
+;secchi_prep, FILE_SEARCH("/localdata/USER/rja/stereo/train/secchi_195/*"), /write_fts, save_path = "/localdata/USER/rja/stereo_prep/train/secchi_195/", OUTSIZE=1024
+
+;FILE_MKDIR,"/localdata/USER/rja/stereo_prep/train/secchi_284/"
+;cd, "/localdata/USER/rja/stereo_prep/train/secchi_284/"
+;secchi_prep, FILE_SEARCH("/localdata/USER/rja/stereo/train/secchi_284/*"), /write_fts, save_path = "/localdata/USER/rja/stereo_prep/train/secchi_284/", OUTSIZE=1024
+
+PRO convert_directory, source_dir, target_dir, work_dir
+  FILE_MKDIR,target_dir
+  
+  FOREACH fp, FILE_SEARCH(source_dir + "*") DO BEGIN
+    ;CATCH, Error_status
+
+    ;IF Error_status NE 0 THEN BEGIN
+    ;  PRINT, 'Error index: ', Error_status
+    ;  PRINT, 'Error message: ', !ERROR_STATE.MSG
+    ;  CATCH, /CANCEL
+    ;  PRINT, "Continue"
+    ;  CONTINUE
+    ;ENDIF
+    
+    IF FILE_EXIST(target_dir + FILE_BASENAME(fp)) THEN CONTINUE
+    
+    trash_files = FILE_SEARCH(work_dir + "*.fts")
+    PRINT, trash_files
+    IF trash_files THEN BEGIN
+      FOREACH fp, FILE_SEARCH(work_dir + "*.fts") DO FILE_DELETE, fp  
+    ENDIF
+    
+    secchi_prep, fp, /write_fts, OUTSIZE=2048
+    
+    converted_file = FILE_SEARCH(work_dir + "*.fts")
+    converted_file = converted_file[0]
+    FILE_MOVE, converted_file, target_dir + FILE_BASENAME(fp)
+    PRINT, target_dir + FILE_BASENAME(fp)
+  ENDFOREACH
+  
+END
+
+work_dir = "/localdata/USER/rja/stereo_iti2021_prep/"
+FILE_MKDIR, work_dir
+cd, work_dir
+
+convert_directory, "/localdata/USER/rja/stereo_iti2021/171/", "/localdata/USER/rja/stereo_iti2021_prep/171/", work_dir
+convert_directory, "/localdata/USER/rja/stereo_iti2021/195/", "/localdata/USER/rja/stereo_iti2021_prep/195/", work_dir
+convert_directory, "/localdata/USER/rja/stereo_iti2021/284/", "/localdata/USER/rja/stereo_iti2021_prep/284/", work_dir
+convert_directory, "/localdata/USER/rja/stereo_iti2021/304/", "/localdata/USER/rja/stereo_iti2021_prep/304/", work_dir
+
+END

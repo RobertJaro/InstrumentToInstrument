@@ -14,9 +14,10 @@ class DiscriminatorMode(Enum):
 
 ########################## Generator ##################################
 class GeneratorAB(nn.Module):
-    def __init__(self, input_dim, output_dim, depth, n_upsample, dim=64, output_activ='tanh', **kwargs):
+    def __init__(self, input_dim, output_dim, depth, n_upsample, dim=64, output_activ='tanh', skip_connections=True, **kwargs):
         super().__init__()
         self.depth = depth
+        # self.skip_connections = skip_connections
         self.from_image = Conv2dBlock(input_dim, dim, 7, 1, 3, **kwargs)
         ##################### Encoder #####################
         self.down_blocks = []
@@ -30,7 +31,7 @@ class GeneratorAB(nn.Module):
         ##################### Decoder #####################
         self.up_blocks = []
         for i in range(depth):
-            self.up_blocks += [UpBlock(dim, dim // 2, n_convs, **kwargs)]
+            self.up_blocks += [UpBlock(dim, dim // 2, n_convs, skip_connection=skip_connections, **kwargs)]
             dim //= 2
             n_convs = n_convs -1 if n_convs > 1 else 1
         ##################### Upsampling #####################
@@ -43,6 +44,7 @@ class GeneratorAB(nn.Module):
         self.model = nn.Sequential(self.from_image, *self.down_blocks, self.core_block, *self.up_blocks, *self.sampling_blocks, self.to_image)
 
     def forward(self, x):
+        self.skip_connections = True
         x = self.from_image(x)
         # encode
         skip_connections = []
@@ -53,7 +55,10 @@ class GeneratorAB(nn.Module):
         x = self.core_block(x)
         # decode
         for up, skip in zip(self.up_blocks, reversed(skip_connections)):
-            x = up(x, skip)
+            if self.skip_connections:
+                x = up(x, skip)
+            else:
+                x = up(x)
         # upsampling
         for up in self.sampling_blocks:
             x = up(x)
@@ -61,13 +66,13 @@ class GeneratorAB(nn.Module):
         return x
 
 class GeneratorBA(nn.Module):
-    def __init__(self, input_dim, output_dim, noise_dim, depth, depth_noise, n_downsample, dim=64, output_activ='tanh', **kwargs):
+    def __init__(self, input_dim, output_dim, noise_dim, depth, depth_noise, n_downsample, dim=64, output_activ='tanh', skip_connections=True, **kwargs):
         super().__init__()
         self.depth = depth
         self.noise_dim = noise_dim
         self.depth_noise = depth_noise
         self.n_downsample = n_downsample
-
+        self.skip_connections = skip_connections
         dim = dim // (2 ** n_downsample)
         self.from_image = Conv2dBlock(input_dim, dim, 7, 1, 3, **kwargs)
         ##################### Downsampling #####################
@@ -93,7 +98,7 @@ class GeneratorBA(nn.Module):
         ##################### Decoder #####################
         self.up_blocks = []
         for i in range(depth):
-            self.up_blocks += [UpBlock(dim, dim // 2, n_convs, **kwargs)]
+            self.up_blocks += [UpBlock(dim, dim // 2, n_convs, skip_connection=skip_connections, **kwargs)]
             dim //= 2
             n_convs = n_convs - 1 if n_convs > 1 else 1
         self.to_image = Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=kwargs['pad_type'])
@@ -117,7 +122,10 @@ class GeneratorBA(nn.Module):
         x = self.core_block(x)
         # decode
         for up, skip in zip(self.up_blocks, reversed(skip_connections)):
-            x = up(x, skip)
+            if hasattr(self, 'skip_connections') and self.skip_connections: # check for backwards compatibility
+                x = up(x, skip)
+            else:
+                x = up(x)
 
         x = self.to_image(x)
         return x
@@ -164,10 +172,10 @@ class Discriminator(nn.Module):
 
     def _make_net(self, input_dim, dim=64):
         cnn_x = []
-        cnn_x += [Conv2dBlock(input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
+        if self.batch_statistic:
+            cnn_x += [BatchStatistic()]
+        cnn_x += [Conv2dBlock((input_dim * 3) if self.batch_statistic else input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
         for i in range(self.depth_discriminator - 1):
-            if self.batch_statistic:
-                cnn_x += [BatchStatistic()]
             cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
             dim *= 2
         cnn_x += [nn.Conv2d(dim, 1, 1, 1, 0)]
@@ -468,7 +476,9 @@ class BatchStatistic(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        return x + torch.mean(x, 0, keepdim=True) + torch.std(x, 0, keepdim=True)
+        return torch.cat([x,
+                          torch.mean(x, [0, 2, 3], keepdim=True) * torch.ones_like(x),
+                          torch.std(x, [0, 2, 3], keepdim=True) * torch.ones_like(x)], 1)
 
 def l2normalize(v, eps=1e-12):
     return v / (v.norm() + eps)
