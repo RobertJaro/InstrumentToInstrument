@@ -36,7 +36,7 @@ Implementation notes:
 
 ### Intended use
 
-- translate STEREO/EUVI filtergrams (171, 195, 284, 304 Å) to match characteristics of SDO/AIA filtergrams (171, 193, 211, 304 Å).
+- translate STEREO/EUVI filtergrams (171, 195, 284, 304 Å) to match characteristics of SDO/AIA filtergrams (171, 193, 211, 304 Å). Use `iti.translate.STEREOToSDO`.
 - apply automated methods developed for SDO to STEREO data.
 - creation of inter-calibrated data series (e.g., use for solar cycle studies).
 - image enhancement of STEREO filtergrams for better visualization.

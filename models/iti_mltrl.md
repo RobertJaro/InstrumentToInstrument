@@ -47,6 +47,7 @@ Implementation notes:
 - the instruments show a difference in quality (e.g., reduced by atmospheric conditions or by instrumental characteristics) and/or calibration.
 - data sets need to provide similar observations in terms of features and regions (a different field-of-view is no limitation).
 - paired images can be used but are not strictly required.
+- see `examples/ITI_train.ipynb` for training examples.
 
 **Extra notes**: The estimation of observables (e.g., additional wavelengths) can be performed if the image translation is sufficiently constrained by the multi-channel context information and the learned high-quality image distribution. 
 
