@@ -36,7 +36,7 @@ Implementation notes:
 - general data pre-processing pipelines are provided (e.g., FITS reader, scale normalization)
 
 
-**Extra notes**: The method is designed as a general framework for image domain translation tasks. We also provide model cards for the specific applications.
+**Extra notes**: The method is designed as a general framework for image domain translation tasks. We also provide model cards for the specific applications (see `models`).
 
 ### Intended use
 
