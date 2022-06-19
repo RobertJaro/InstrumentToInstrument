@@ -327,25 +327,13 @@ class NormalizeRadiusEditor(Editor):
         s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
         s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
         if self.crop:
-            data = s_map.data
-            pad_x = int(self.resolution - data.shape[1])
-            pad_y = int(self.resolution - data.shape[0])
-            if pad_y > 0:
-                data = np.pad(data, [(np.ceil(pad_x / 2).astype(np.int), np.floor(pad_x / 2).astype(np.int)), (0,0)],
-                              constant_values=np.nan)
-            if pad_y < 0:
-                data = data[-np.ceil(pad_y / 2).astype(np.int):np.floor(pad_y / 2).astype(np.int)]
-            if pad_x > 0:
-                data = np.pad(data, [(0,0), (np.ceil(pad_x / 2).astype(np.int), np.floor(pad_x / 2).astype(np.int))],
-                              constant_values=np.nan)
-            if pad_x < 0:
-                data = data[:, -np.ceil(pad_x / 2).astype(np.int):np.floor(pad_x / 2).astype(np.int)]
-            new_meta = s_map.meta.copy()
-            new_meta['crpix1'] = s_map.reference_pixel.x.to_value(u.pix) + 1 + pad_x / 2
-            new_meta['crpix2'] = s_map.reference_pixel.y.to_value(u.pix) + 1 + pad_y / 2
-            new_meta['naxis1'] = data.shape[1]
-            new_meta['naxis2'] = data.shape[0]
-            s_map = Map(data, new_meta)
+            arcs_frame = (self.resolution / 2) * s_map.scale[0].value
+            s_map = s_map.submap(bottom_left=SkyCoord(-arcs_frame * u.arcsec, -arcs_frame * u.arcsec, frame=s_map.coordinate_frame),
+                                 top_right=SkyCoord(arcs_frame * u.arcsec, arcs_frame * u.arcsec, frame=s_map.coordinate_frame))
+            pad_x = s_map.data.shape[0] - self.resolution
+            pad_y = s_map.data.shape[1] - self.resolution
+            s_map = s_map.submap(bottom_left=[pad_x // 2, pad_y // 2] * u.pix,
+                                 top_right=[pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
         s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
         return s_map
 
@@ -615,7 +603,7 @@ class PaddingEditor(Editor):
                (int(np.floor(y_pad)), int(np.ceil(y_pad)))]
         if len(s) == 3:
             pad.insert(0, (0, 0))
-        return np.pad(data, pad, 'constant', constant_values=np.min(data))
+        return np.pad(data, pad, 'constant', constant_values=np.nan)
 
 
 class UnpaddingEditor(Editor):
