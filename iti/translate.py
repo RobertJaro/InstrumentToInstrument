@@ -297,3 +297,31 @@ class KSOFlatConverter(InstrumentConverter):
     def convert(self, paths):
         ds = KSOFlatDataset(paths, self.resolution)
         return self._convertDataset(ds)
+
+    
+    
+class GREGORLowToHighGBand(ImageToImage):
+    def __init__(self, model_name='gregor_low_to_high_gband.pt', resolution=2160, **kwargs):
+        super().__init__(model_name, **kwargs)
+        self.resolution = resolution
+
+    def translate(self, paths, return_arrays=False, **kwargs):
+        ds = GregorDatasetGBand(paths, self.resolution, **kwargs)
+        for result, inputs, outputs in self._translateDataset(ds):
+            if return_arrays:
+                yield result, inputs, outputs
+            else:
+                yield result
+
+class GREGORLowToHighContinuum(ImageToImage):
+    def __init__(self, model_name='gregor_low_to_high_continuum.pt', resolution=2160, **kwargs):
+        super().__init__(model_name, **kwargs)
+        self.resolution = resolution
+
+    def translate(self, paths, return_arrays=False, **kwargs):
+        ds = GregorDatasetContinuum(paths, self.resolution, **kwargs)
+        for result, inputs, outputs in self._translateDataset(ds):
+            if return_arrays:
+                yield result, inputs, outputs
+            else:
+                yield result
