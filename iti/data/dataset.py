@@ -456,3 +456,29 @@ class ZerosDataset(Dataset):
 
     def __getitem__(self, idx):
         return np.zeros(self.shape)
+    
+
+class GregorDatasetGBand(BaseDataset):
+
+    def __init__(self, data, ext='.fts', **kwargs):
+        norm = gregor_norms_gband['gband']
+        sub_editors = [MapToDataEditor(),
+                       NanEditor(),
+                       NormalizeEditor(norm),
+                       ExpandDimsEditor()]
+        editors = [LoadGregorGBandEditor(), DistributeEditor(sub_editors)]
+
+        super().__init__(data, editors, ext=ext, **kwargs)
+
+
+class GregorDatasetContinuum(BaseDataset):
+
+    def __init__(self, data, ext='.fts', **kwargs):
+        norm = gregor_norms_continuum['continuum']
+        sub_editors = [MapToDataEditor(),
+                       NanEditor(),
+                       NormalizeEditor(norm),
+                       ExpandDimsEditor()]
+        editors = [LoadGregorContinuumEditor(), DistributeEditor(sub_editors)]
+
+        super().__init__(data, editors, ext=ext, **kwargs)
