@@ -190,14 +190,14 @@ class STEREOToSDO(InstrumentToInstrument):
 
     def __init__(self, model_name='stereo_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
+        self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
 
     def translate(self, path, basenames=None, return_arrays=False):
         soho_dataset = STEREODataset(path, basenames=basenames)
         for result, inputs, outputs in self._translateDataset(soho_dataset):
-            norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
             result = [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instrument, wl))
                       for s_map, norm, instrument, wl in
-                      zip(result, norms, ['AIA'] * 4, [171, 193, 211, 304])]
+                      zip(result, self.norms, ['AIA'] * 4, [171, 193, 211, 304])]
             if return_arrays:
                 yield result, inputs, outputs
             else:
