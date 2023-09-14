@@ -313,16 +313,20 @@ class NormalizeExposureEditor(Editor):
 
 
 class NormalizeRadiusEditor(Editor):
-    def __init__(self, resolution, padding_factor=0.1, crop=True, **kwargs):
+    def __init__(self, resolution, padding_factor=0.1, crop=True, fix_irradiance_with_distance=False, **kwargs):
         self.padding_factor = padding_factor
         self.resolution = resolution
         self.crop = crop
+        self.fix_irradiance_with_distance = fix_irradiance_with_distance
         super(NormalizeRadiusEditor, self).__init__(**kwargs)
 
     def call(self, s_map, **kwargs):
         warnings.simplefilter("ignore")  # ignore warnings
-        r_obs_pix = s_map.rsun_obs / s_map.scale[0]  # normalize solar radius
-        r_obs_pix = (1 + self.padding_factor) * r_obs_pix
+
+        if self.fix_irradiance_with_distance:
+            old_meta = s_map.meta.copy()
+        r_obs_pix = s_map.rsun_obs / s_map.scale[0]  # Get the solar radius in pixels
+        r_obs_pix = (1 + self.padding_factor) * r_obs_pix  # Get the size in pixels of the padded radius 
         scale_factor = self.resolution / (2 * r_obs_pix.value)
         s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
         s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
@@ -334,7 +338,22 @@ class NormalizeRadiusEditor(Editor):
             pad_y = s_map.data.shape[1] - self.resolution
             s_map = s_map.submap(bottom_left=[pad_x // 2, pad_y // 2] * u.pix,
                                  top_right=[pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
+        
         s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
+
+        # Virtually move the instrument such that the sun occupies the expected
+        # size in the current optics
+        if self.fix_irradiance_with_distance:
+            # The sun is bigger, not the scaling of the detector
+            s_map.meta['rsun_obs'] = old_meta['rsun_obs']*scale_factor
+            # This means that cdelt is the same as the old one
+            s_map.meta['cdelt1'] = old_meta['cdelt1']
+            s_map.meta['cdelt2'] = old_meta['cdelt1']           
+            # But we are also closer to the sun
+            s_map.meta['dsun_obs'] = s_map.meta('rsun_ref')/np.tan(s_map.meta['rsun_obs']*u.arcsec)
+            # Change intensity due to distance change
+            s_map.data[:] = s_map.data[:] * (old_meta['dsun_obs']**2)/(s_map.meta['dsun_obs']**2)
+
         return s_map
 
 
