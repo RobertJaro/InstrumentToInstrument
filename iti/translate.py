@@ -48,6 +48,7 @@ class InstrumentToInstrument:
                 padding_editor = PaddingEditor(target_shape)
                 # pad
                 padded_img = padding_editor.call(img)
+                padded_img = np.nan_to_num(padded_img, nan=np.nanmin(padded_img))
                 # translate
                 with torch.no_grad():
                     if self.patch_factor > 0:

@@ -5,7 +5,7 @@ setup(
     name='InstrumentToInstrument',
     version='0.1',
     packages=setuptools.find_packages(),
-    url='https://github.com/RobertJaro/SolarInstrumentToInstrument',
+    url='https://github.com/RobertJaro/InstrumentToInstrument',
     download_url='',
     license='GPL-3.0',
     author='Robert Jarolim',

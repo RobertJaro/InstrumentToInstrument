@@ -20,7 +20,7 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor
+    SOHOFixHeaderEditor, PaddingEditor
 
 
 class Norm(Enum):
@@ -321,6 +321,7 @@ class HMIDataset(BaseDataset):
                    NormalizeRadiusEditor(resolution),
                    RemoveOffLimbEditor(),
                    MapToDataEditor(),
+                   PaddingEditor((resolution, resolution)),  # fix field-of-view of subframe
                    NanEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
