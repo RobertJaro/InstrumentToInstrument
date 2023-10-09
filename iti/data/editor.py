@@ -350,7 +350,7 @@ class NormalizeRadiusEditor(Editor):
             s_map.meta['cdelt1'] = old_meta['cdelt1']
             s_map.meta['cdelt2'] = old_meta['cdelt1']           
             # But we are also closer to the sun
-            s_map.meta['dsun_obs'] = s_map.meta['rsun_ref']/np.tan(s_map.meta['rsun_obs']*u.arcsec)
+            s_map.meta['dsun_obs'] = (s_map.meta['rsun_ref']/np.tan(s_map.meta['rsun_obs']*u.arcsec)).value
             # Change intensity due to distance change
             s_map.data[:] = s_map.data[:] * (old_meta['dsun_obs']**2)/(s_map.meta['dsun_obs']**2)
 
