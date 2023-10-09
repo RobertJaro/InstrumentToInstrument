@@ -17,9 +17,10 @@ args = parser.parse_args()
 download_dir = args.download_dir
 
 wavelengths = [171, 195, 284, 304, ]
-t_start = datetime.datetime(2016, 4, 1)
+t_start = datetime.datetime(2019, 11, 30)
 t_end = datetime.datetime.now()
-td = datetime.timedelta(days=30)
+td = datetime.timedelta(days=10)
+cadence = 6 * u.hour
 
 times = [t_start + i * td for i in range((t_end - t_start) // td)]
 [os.makedirs(os.path.join(download_dir, str(wl)), exist_ok=True) for wl in wavelengths]
@@ -32,12 +33,12 @@ def round_hour(t):
 for time in tqdm(times):
     queries = []
     for wl in wavelengths:
-        stereo_a = Fido.search(a.Instrument("EUVI"), a.Source('STEREO_A'), a.Time(time, time + td), a.Sample(1 * u.day),
+        stereo_a = Fido.search(a.Instrument("EUVI"), a.vso.Source('STEREO_A'), a.Time(time, time + td), a.Sample(cadence),
                                a.Wavelength(wl * u.AA))
-        if time.year > 2014: # loss of STEREO B
+        if time > datetime.datetime(2014, 10, 1): # loss of STEREO B
             queries += [stereo_a]
             continue
-        stereo_b = Fido.search(a.Instrument("EUVI"), a.Source('STEREO_B'), a.Time(time, time + td), a.Sample(1 * u.day),
+        stereo_b = Fido.search(a.Instrument("EUVI"), a.vso.Source('STEREO_B'), a.Time(time, time + td), a.Sample(cadence),
                                a.Wavelength(wl * u.AA))
         queries += [stereo_a, stereo_b]
 
