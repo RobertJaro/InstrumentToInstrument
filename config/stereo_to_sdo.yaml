@@ -1,0 +1,23 @@
+base_dir: /gpfs/gpfs0/robert.jarolim/iti_v2/stereo_sdo_v1
+data:
+  B_path: /gpfs/gpfs0/robert.jarolim/data/iti/sdo
+  converted_B_path: /gpfs/gpfs0/robert.jarolim/data/converted/sdo_4096
+  A_path: /gpfs/gpfs0/robert.jarolim/data/iti/stereo_iti2021_prep
+  converted_A_path: /gpfs/gpfs0/robert.jarolim/data/converted/stereo_1024
+  num_workers: 16
+  iterations_per_epoch: 1000
+model:
+  input_dim_a: 4
+  input_dim_b: 4
+  upsampling: 2
+  discriminator_mode: CHANNELS
+  lambda_diversity: 0
+  norm: in_rs_aff
+  use_batch_statistic: False
+logging:
+  wandb_entity: robert_jarolim
+  wandb_project: ITI
+  wandb_name: STEREO-To-SDO
+  wandb_id: null
+training:
+  epochs: 100

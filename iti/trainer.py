@@ -6,6 +6,7 @@ from random import randint
 import numpy as np
 import torch
 import torch.nn.functional as F
+from lightning import LightningModule
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import InstanceNorm2d
@@ -13,8 +14,7 @@ from torch.utils.data import DataLoader
 
 from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
 
-
-class Trainer(nn.Module):
+class Trainer(LightningModule):
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
                  activation='tanh', norm='in_rs_aff', use_batch_statistic=False,
                  n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
