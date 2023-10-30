@@ -47,6 +47,11 @@ class ITIDataModule(LightningDataModule):
                             sampler=RandomSampler(self.B_train_ds, replacement=True, num_samples=self.iterations_per_epoch))
         return {"gen_A": gen_A, "dis_A": dis_A, "gen_B": gen_B, "dis_B": dis_B}
 
+    def val_dataloader(self):
+        A = DataLoader(self.A_valid_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        B = DataLoader(self.B_valid_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        return [A, B]
+
 
 
 class Norm(Enum):

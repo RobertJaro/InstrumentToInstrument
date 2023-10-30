@@ -38,20 +38,20 @@ sdo_converted_path = data_config['converted_B_path']
 test_months = [11, 12]
 train_months = list(range(2, 10))
 
-sdo_dataset = SDODataset(sdo_path, resolution=4096, patch_shape=(1024, 1024), months=train_months)
+sdo_dataset = SDODataset(sdo_path, resolution=4096, patch_shape=(512, 512), months=train_months)
 sdo_dataset = StorageDataset(sdo_dataset,
                              sdo_converted_path,
                              ext_editors=[SliceEditor(0, -1),
                                           RandomPatchEditor((512, 512))])
 
-stereo_dataset = STEREODataset(stereo_path, months=train_months)
+stereo_dataset = STEREODataset(stereo_path, months=train_months, patch_shape=(512, 512))
 stereo_dataset = StorageDataset(stereo_dataset, stereo_converted_path,
                                 ext_editors=[BrightestPixelPatchEditor((256, 256)), RandomPatchEditor((128, 128))])
 
-sdo_valid = StorageDataset(SDODataset(sdo_path, resolution=4096, patch_shape=(1024, 1024), months=test_months),
-                           sdo_converted_path, ext_editors=[RandomPatchEditor((512, 512)), SliceEditor(0, -1)])
-stereo_valid = StorageDataset(STEREODataset(stereo_path, patch_shape=(1024, 1024), months=test_months),
-                              stereo_converted_path, ext_editors=[RandomPatchEditor((128, 128))])
+sdo_valid = StorageDataset(SDODataset(sdo_path, resolution=4096, patch_shape=(512, 512), months=test_months, limit=10),
+                           sdo_converted_path, ext_editors=[SliceEditor(0, -1)])
+stereo_valid = StorageDataset(STEREODataset(stereo_path, patch_shape=(128, 128), months=test_months, limit=10),
+                              stereo_converted_path, ext_editors=[BrightestPixelPatchEditor((128, 128))])
 
 data_module = ITIDataModule(stereo_dataset, sdo_dataset, stereo_valid, sdo_valid, **config['data'])
 
@@ -80,7 +80,7 @@ wandb_logger.experiment.config.update(config, allow_val_change=True)
 module = ITIModule(**config['model'])
 
 # setup save callbacks
-checkpoint_callback = ModelCheckpoint(dirpath=config['base_dir'], save_last=True)
+checkpoint_callback = ModelCheckpoint(dirpath=base_dir, save_last=True, every_n_epochs=1)
 save_callback = SaveCallback(base_dir)
 
 # setup plot callbacks

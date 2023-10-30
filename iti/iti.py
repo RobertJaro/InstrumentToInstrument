@@ -112,6 +112,74 @@ class ITIModule(LightningModule):
 
         self.log_dict({**disc_loss_dict, **train_loss_dict})
 
+    # def validation_step(self, batch, batch_nb, dataloader_idx):
+    #     if dataloader_idx == 0:
+    #         x_a = batch
+    #         n_a = self.estimator_noise(x_a)
+    #         x_a_identity = self.gen_ba(self.upsample(x_a), n_a)
+    #         n_a_identity = self.estimator_noise(x_a_identity)
+    #         x_ab = self.gen_ab(x_a)
+    #         x_aba = self.gen_ba(x_ab, n_a)
+    #         n_aba = self.estimator_noise(x_aba)
+    #         # reconstruction loss
+    #         valid_loss_gen_a_identity = self.recon_criterion(x_a_identity, x_a)
+    #         valid_loss_gen_a_translate = self.recon_criterion(x_aba, x_a)
+    #
+    #
+    #         # GAN loss
+    #         valid_loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
+    #         valid_loss_dis_a = self.dis_a.calc_gen_loss(x_a)  # use only real images fro validation
+    #
+    #         # Content loss
+    #         valid_loss_gen_a_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_aba))
+    #         valid_loss_gen_a_identity_content = torch.mean(self.dis_a.calc_content_loss(x_a, x_a_identity))
+    #         # Noise loss
+    #         valid_loss_gen_aba_noise = self.recon_criterion(n_aba, n_a)
+    #         valid_loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
+    #         return {'valid_loss_gen_a_translate': valid_loss_gen_a_translate,
+    #                 'valid_loss_gen_adv_b': valid_loss_gen_adv_b,
+    #                 'valid_loss_dis_a': valid_loss_dis_a,}
+    #     if dataloader_idx == 1:
+    #         x_b = batch
+    #         n_gen = self.generateNoise(x_b)
+    #         x_b_identity = self.gen_ab(self.downsample(x_b))
+    #         x_ba = self.gen_ba(x_b, n_gen)
+    #         x_bab = self.gen_ab(x_ba)
+    #         valid_loss_gen_b_identity = self.recon_criterion(x_b_identity, x_b)
+    #         valid_loss_gen_b_translate = self.recon_criterion(x_bab, x_b)
+    #         valid_loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
+    #         valid_loss_dis_b = self.dis_b.calc_gen_loss(x_b)
+    #         valid_loss_gen_b_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_bab))
+    #         valid_loss_gen_b_identity_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_b_identity))
+    #         return {
+    #                 'valid_loss_gen_b_translate': valid_loss_gen_b_translate,
+    #                 'valid_loss_gen_adv_a': valid_loss_gen_adv_a,
+    #                 'valid_loss_dis_b': valid_loss_dis_b, }
+
+
+
+    # def validation_epoch_end(self, outputs):
+    #     valid_loss_gen_a_translate = torch.stack([x['valid_loss_gen_a_translate'] for x in outputs]).mean()
+    #     valid_loss_gen_b_translate = torch.stack([x['valid_loss_gen_b_translate'] for x in outputs]).mean()
+    #     valid_loss_gen_adv_a = torch.stack([x['valid_loss_gen_adv_a'] for x in outputs]).mean()
+    #     valid_loss_gen_adv_b = torch.stack([x['valid_loss_gen_adv_b'] for x in outputs]).mean()
+    #     valid_loss_dis_a = torch.stack([x['valid_loss_dis_a'] for x in outputs]).mean()
+    #     valid_loss_dis_b = torch.stack([x['valid_loss_dis_b'] for x in outputs]).mean()
+    #
+    #     # return {'valid_loss': valid_loss_gen_a_translate + valid_loss_gen_b_translate}
+    #     # {'GEN_A': {'ABA': valid_loss_gen_a_translate, 'ADV': valid_loss_gen_adv_a},
+    #     #  'GEN_B': {'BAB': valid_loss_gen_b_translate, 'ADV': valid_loss_gen_adv_b},
+    #     #  'DIS_A': {'ADV': valid_loss_dis_a},
+    #     #  'DIS_B': {'ADV': valid_loss_dis_b}
+    #     #  }
+    #     self.log_dict({'valid_loss_gen_a_translate': valid_loss_gen_a_translate,
+    #                       'valid_loss_gen_b_translate': valid_loss_gen_b_translate,
+    #                       'valid_loss_gen_adv_a': valid_loss_gen_adv_a,
+    #                       'valid_loss_gen_adv_b': valid_loss_gen_adv_b,
+    #                       'valid_loss_dis_a': valid_loss_dis_a,
+    #                       'valid_loss_dis_b': valid_loss_dis_b,
+    #                       })
+
     def discriminator_update(self, x_a, x_b):
         # noise
         n_gen = self.generateNoise(x_b)
