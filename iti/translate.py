@@ -1,4 +1,5 @@
 import os
+from contextlib import closing
 from multiprocessing.pool import Pool
 from pathlib import Path
 from typing import List, Tuple
@@ -34,7 +35,7 @@ class InstrumentToInstrument:
         raise NotImplementedError()
 
     def _translateDataset(self, dataset):
-        with Pool(self.n_workers) as pool:
+        with closing(Pool(self.n_workers)) as pool:
             for img, kwargs in pool.imap(dataset.convertData, dataset.data):
                 #
                 original_shape = img.shape
@@ -64,6 +65,7 @@ class InstrumentToInstrument:
                 # use last meta data as reference for additional observables
                 ref_meta += [ref_meta[-1]] * (len(iti_img) - len(ref_meta))
                 #
+                # for synthesis of channel information: 4 --> 5 channels (create proper meta data)
                 ref_img = img.tolist()
                 ref_img += [ref_img[-1]] * (len(iti_img) - len(ref_img))  # extend list
                 ref_img = np.array(ref_img)
@@ -192,8 +194,8 @@ class STEREOToSDO(InstrumentToInstrument):
         super().__init__(model_name, **kwargs)
 
     def translate(self, path, basenames=None, return_arrays=False):
-        soho_dataset = STEREODataset(path, basenames=basenames)
-        for result, inputs, outputs in self._translateDataset(soho_dataset):
+        stereo_dataset = STEREODataset(path, basenames=basenames)
+        for result, inputs, outputs in self._translateDataset(stereo_dataset):
             norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
             result = [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instrument, wl))
                       for s_map, norm, instrument, wl in
