@@ -153,9 +153,10 @@ class SaveCallback(pl.Callback):
         self.checkpoint_dir = checkpoint_dir
         super().__init__()
 
-    def on_validation_epoch_end(self, trainer: "pl.Trainer", module: "pl.LightningModule") -> None:
+    def on_validation_epoch_end(self, trainer: "pl.Trainer", module: ITIModule) -> None:
+        super().on_validation_epoch_end(trainer, module)
         state_path = os.path.join(self.checkpoint_dir, 'checkpoint.pt')
-        checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_{trainer.global_step:06d}.pt')
+        checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_{module.global_step:06d}.pt')
         state = {'gen_ab': module.gen_ab,
                  'gen_ba': module.gen_ba,
                  'noise_est': module.estimator_noise,

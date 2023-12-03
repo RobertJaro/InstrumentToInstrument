@@ -492,7 +492,7 @@ class ZerosDataset(Dataset):
 
     def __getitem__(self, idx):
         return np.zeros(self.shape)
-    
+
 
 class GregorDatasetGBand(BaseDataset):
 
@@ -518,3 +518,70 @@ class GregorDatasetContinuum(BaseDataset):
         editors = [LoadGregorContinuumEditor(), DistributeEditor(sub_editors)]
 
         super().__init__(data, editors, ext=ext, **kwargs)
+
+class SDODataset2(StackDataset):
+
+    def __init__(self, data, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, ['171','304'], ext=ext, **kwargs)
+        data_sets = [AIADataset(paths[0], 171, resolution=resolution, **kwargs),
+                     AIADataset(paths[1], 304, resolution=resolution, **kwargs)
+                    ]
+        super().__init__(data_sets, **kwargs)
+        if patch_shape is not None:
+            self.addEditor(BrightestPixelPatchEditor(patch_shape))
+
+class EUIDataset(StackDataset):
+
+    def __init__(self, data, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, ['eui-fsi174-image', 'eui-fsi304-image'], ext=ext, **kwargs)
+        data_sets = [FSIDataset(paths[0], 174, resolution=resolution, **kwargs),
+                     FSIDataset(paths[1], 304, resolution=resolution, **kwargs)
+                    ]
+        super().__init__(data_sets, **kwargs)
+        if patch_shape is not None:
+            self.addEditor(BrightestPixelPatchEditor(patch_shape))
+
+
+class FSIDataset(BaseDataset):
+    def __init__(self, data, wavelength=304, resolution=1024, ext='.fits', **kwargs):
+        norm = solo_norm[wavelength]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution),
+                   NormalizeExposureEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+class HRIDataset(BaseDataset):
+    def __init__(self, data, ext='.fits', **kwargs):
+        norm = hri_norm[174]
+
+        editors = [LoadMapEditor(),
+                   NormalizeExposureEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ExpandDimsEditor()]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+
+class Proba2Dataset(BaseDataset):
+    def __init__(self, data, wavelength=174, resolution=1024, ext='.fits', **kwargs):
+        norm = proba2_norm[wavelength]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution),
+                   NormalizeExposureEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
