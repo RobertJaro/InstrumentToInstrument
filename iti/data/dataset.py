@@ -253,17 +253,17 @@ def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, 
 
 class SDODataset(StackDataset):
 
-    def __init__(self, data, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
+    def __init__(self, data, patch_shape=None, wavelengths=None, resolution=2048, ext='.fits', **kwargs):
+        wavelengths = [171, 193, 211, 304, 6173, ] if wavelengths is None else wavelengths
         if isinstance(data, list):
             paths = data
         else:
-            paths = get_intersecting_files(data, ['171', '193', '211', '304', '6173'], ext=ext, **kwargs)
-        data_sets = [AIADataset(paths[0], 171, resolution=resolution, **kwargs),
-                     AIADataset(paths[1], 193, resolution=resolution, **kwargs),
-                     AIADataset(paths[2], 211, resolution=resolution, **kwargs),
-                     AIADataset(paths[3], 304, resolution=resolution, **kwargs),
-                     HMIDataset(paths[4], 'mag', resolution=resolution)
-                     ]
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+        ds = {171: AIADataset, 193: AIADataset, 211: AIADataset, 304: AIADataset, 6173: HMIDataset}
+        data_sets = [ds[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                         for wl_id, files in zip(wavelengths, paths)]
+
+
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
@@ -494,44 +494,6 @@ class ZerosDataset(Dataset):
         return np.zeros(self.shape)
 
 
-class GregorDatasetGBand(BaseDataset):
-
-    def __init__(self, data, ext='.fts', **kwargs):
-        norm = gregor_norms_gband['gband']
-        sub_editors = [MapToDataEditor(),
-                       NanEditor(),
-                       NormalizeEditor(norm),
-                       ExpandDimsEditor()]
-        editors = [LoadGregorGBandEditor(), DistributeEditor(sub_editors)]
-
-        super().__init__(data, editors, ext=ext, **kwargs)
-
-
-class GregorDatasetContinuum(BaseDataset):
-
-    def __init__(self, data, ext='.fts', **kwargs):
-        norm = gregor_norms_continuum['continuum']
-        sub_editors = [MapToDataEditor(),
-                       NanEditor(),
-                       NormalizeEditor(norm),
-                       ExpandDimsEditor()]
-        editors = [LoadGregorContinuumEditor(), DistributeEditor(sub_editors)]
-
-        super().__init__(data, editors, ext=ext, **kwargs)
-
-class SDODataset2(StackDataset):
-
-    def __init__(self, data, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
-        if isinstance(data, list):
-            paths = data
-        else:
-            paths = get_intersecting_files(data, ['171','304'], ext=ext, **kwargs)
-        data_sets = [AIADataset(paths[0], 171, resolution=resolution, **kwargs),
-                     AIADataset(paths[1], 304, resolution=resolution, **kwargs)
-                    ]
-        super().__init__(data_sets, **kwargs)
-        if patch_shape is not None:
-            self.addEditor(BrightestPixelPatchEditor(patch_shape))
 
 class EUIDataset(StackDataset):
 
