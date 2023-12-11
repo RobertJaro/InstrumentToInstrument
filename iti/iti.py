@@ -104,12 +104,12 @@ class ITIModule(LightningModule):
         dis_params = list(self.dis_a.parameters()) + list(self.dis_b.parameters())
         gen_params = list(self.gen_ab.parameters()) + list(self.gen_ba.parameters()) + list(
             self.estimator_noise.parameters())
-        self.dis_opt = torch.optim.Adam(dis_params, lr=self.learning_rate, betas=(0.5, 0.9))
-        self.gen_opt = torch.optim.Adam(gen_params, lr=self.learning_rate, betas=(0.5, 0.9))
-        return [self.gen_opt, self.dis_opt]
+        dis_opt = torch.optim.Adam(dis_params, lr=self.learning_rate, betas=(0.5, 0.9))
+        gen_opt = torch.optim.Adam(gen_params, lr=self.learning_rate, betas=(0.5, 0.9))
+        return gen_opt, dis_opt
 
     def training_step(self, batch):
-        if self.global_step > 100000:  # fix running stats
+        if self.global_step > 200000:  # fix running stats
             self.gen_ab.eval()
             self.gen_ba.eval()
         x_a, x_b = batch['dis_A'], batch['dis_B']
@@ -120,7 +120,7 @@ class ITIModule(LightningModule):
 
 
         self.log_dict({**disc_loss_dict, **train_loss_dict})
-        return {**disc_loss_dict, **train_loss_dict}
+        #return {**disc_loss_dict, **train_loss_dict}
 
 
     def validation_step(self, batch, batch_nb, dataloader_idx):
@@ -241,9 +241,10 @@ class ITIModule(LightningModule):
         loss_dis_b = self.dis_b.calc_dis_loss(x_ab, x_b)
         loss_dis_total = loss_dis_a + loss_dis_b
 
-        self.dis_opt.zero_grad()
+        dis_opt = self.optimizers()[1]
+        dis_opt.zero_grad()
         self.manual_backward(loss_dis_total)
-        self.dis_opt.step()
+        dis_opt.step()
 
         train_loss_dict = {
             'loss_dis_a': loss_dis_a,
@@ -346,9 +347,10 @@ class ITIModule(LightningModule):
             total_loss += self.lambda_diversity * loss_gen_diversity
 
         # update
-        self.gen_opt.zero_grad()
+        gen_opt = self.optimizers()[0]
+        gen_opt.zero_grad()
         self.manual_backward(total_loss)
-        self.gen_opt.step()
+        gen_opt.step()
         return train_loss_dict
 
     def generateNoise(self, x_b):
