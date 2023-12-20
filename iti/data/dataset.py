@@ -21,7 +21,7 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor, PaddingEditor
+    SOHOFixHeaderEditor, PaddingEditor, solo_norm, hri_norm, swap_norm
 
 
 class ITIDataModule(LightningDataModule):
@@ -259,8 +259,8 @@ class SDODataset(StackDataset):
             paths = data
         else:
             paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
-        ds = {171: AIADataset, 193: AIADataset, 211: AIADataset, 304: AIADataset, 6173: HMIDataset}
-        data_sets = [ds[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+        ds_mapping = {171: AIADataset, 193: AIADataset, 211: AIADataset, 304: AIADataset, 6173: HMIDataset}
+        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
                          for wl_id, files in zip(wavelengths, paths)]
 
 
@@ -497,14 +497,16 @@ class ZerosDataset(Dataset):
 
 class EUIDataset(StackDataset):
 
-    def __init__(self, data, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
+    def __init__(self, data, patch_shape=None, wavelengths=None, resolution=1024, ext='.fits', **kwargs):
+        wavelengths = [174, 304] if wavelengths is None else wavelengths
         if isinstance(data, list):
             paths = data
         else:
-            paths = get_intersecting_files(data, ['eui-fsi174-image', 'eui-fsi304-image'], ext=ext, **kwargs)
-        data_sets = [FSIDataset(paths[0], 174, resolution=resolution, **kwargs),
-                     FSIDataset(paths[1], 304, resolution=resolution, **kwargs)
-                    ]
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+        ds_mapping = {174: FSIDataset, 304: FSIDataset}
+        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                     for wl_id, files in zip(wavelengths, paths)]
+
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
@@ -536,9 +538,9 @@ class HRIDataset(BaseDataset):
 
 
 
-class Proba2Dataset(BaseDataset):
+class SWAPDataset(BaseDataset):
     def __init__(self, data, wavelength=174, resolution=1024, ext='.fits', **kwargs):
-        norm = proba2_norm[wavelength]
+        norm = swap_norm[wavelength]
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
