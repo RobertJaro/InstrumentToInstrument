@@ -1,3 +1,4 @@
+
 import os
 from contextlib import closing
 from multiprocessing.pool import Pool
@@ -11,7 +12,7 @@ import torch
 from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
-from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset, GregorDatasetGBand, GregorDatasetContinuum
+from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset
 from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
 
 
@@ -299,31 +300,3 @@ class KSOFlatConverter(InstrumentConverter):
     def convert(self, paths):
         ds = KSOFlatDataset(paths, self.resolution)
         return self._convertDataset(ds)
-
-    
-    
-class GREGORLowToHighGBand(ImageToImage):
-    def __init__(self, model_name='gregor_low_to_high_gband.pt', resolution=2160, **kwargs):
-        super().__init__(model_name, **kwargs)
-        self.resolution = resolution
-
-    def translate(self, paths, return_arrays=False, **kwargs):
-        ds = GregorDatasetGBand(paths, self.resolution, **kwargs)
-        for result, inputs, outputs in self._translateDataset(ds):
-            if return_arrays:
-                yield result, inputs, outputs
-            else:
-                yield result
-
-class GREGORLowToHighContinuum(ImageToImage):
-    def __init__(self, model_name='gregor_low_to_high_continuum.pt', resolution=2160, **kwargs):
-        super().__init__(model_name, **kwargs)
-        self.resolution = resolution
-
-    def translate(self, paths, return_arrays=False, **kwargs):
-        ds = GregorDatasetContinuum(paths, self.resolution, **kwargs)
-        for result, inputs, outputs in self._translateDataset(ds):
-            if return_arrays:
-                yield result, inputs, outputs
-            else:
-                yield result
