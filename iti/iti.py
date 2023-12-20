@@ -120,7 +120,6 @@ class ITIModule(LightningModule):
 
 
         self.log_dict({**disc_loss_dict, **train_loss_dict})
-        #return {**disc_loss_dict, **train_loss_dict}
 
 
     def validation_step(self, batch, batch_nb, dataloader_idx):
@@ -157,7 +156,7 @@ class ITIModule(LightningModule):
                     'valid_loss_dis_a': valid_loss_dis_a,}
 
 
-        if dataloader_idx == 1:
+        elif dataloader_idx == 1:
             x_b = batch
             n_gen = self.generateNoise(x_b)
             x_b_identity = self.gen_ab(self.downsample(x_b))
@@ -190,16 +189,6 @@ class ITIModule(LightningModule):
         valid_loss_dis_a = torch.stack(self.valid_loss_dis_a).mean()
         valid_loss_dis_b = torch.stack(self.valid_loss_dis_b).mean()
 
-        #outputs = outputs_list[1] # unpack dataloader 1
-        #valid_loss_gen_b_translate = torch.stack([x['valid_loss_gen_b_translate'] for x in outputs]).mean()
-        #valid_loss_gen_adv_a = torch.stack([x['valid_loss_gen_adv_a'] for x in outputs]).mean()
-        #valid_loss_dis_b = torch.stack([x['valid_loss_dis_b'] for x in outputs]).mean()
-        # return {'valid_loss': valid_loss_gen_a_translate + valid_loss_gen_b_translate}
-        # {'GEN_A': {'ABA': valid_loss_gen_a_translate, 'ADV': valid_loss_gen_adv_a},
-        #  'GEN_B': {'BAB': valid_loss_gen_b_translate, 'ADV': valid_loss_gen_adv_b},
-        #  'DIS_A': {'ADV': valid_loss_dis_a},
-        #  'DIS_B': {'ADV': valid_loss_dis_b}
-        #  }
         self.log_dict({'valid_loss_gen_a_translate': valid_loss_gen_a_translate,
                           'valid_loss_gen_b_translate': valid_loss_gen_b_translate,
                           'valid_loss_gen_adv_a': valid_loss_gen_adv_a,
@@ -208,12 +197,12 @@ class ITIModule(LightningModule):
                           'valid_loss_dis_b': valid_loss_dis_b,
                           })
 
-        #self.valid_loss_gen_a_translate.clear()
-        #self.valid_loss_gen_b_translate.clear()
-        #self.valid_loss_gen_adv_a.clear()
-        #self.valid_loss_gen_adv_b.clear()
-        #self.valid_loss_dis_a.clear()
-        #self.valid_loss_dis_b.clear()
+        self.valid_loss_gen_a_translate.clear()
+        self.valid_loss_gen_b_translate.clear()
+        self.valid_loss_gen_adv_a.clear()
+        self.valid_loss_gen_adv_b.clear()
+        self.valid_loss_dis_a.clear()
+        self.valid_loss_dis_b.clear()
 
         return {'valid_loss_gen_a_translate': valid_loss_gen_a_translate,
                 'valid_loss_gen_b_translate': valid_loss_gen_b_translate,
