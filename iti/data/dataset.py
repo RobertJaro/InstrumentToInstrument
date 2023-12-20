@@ -21,7 +21,7 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor, PaddingEditor
+    SOHOFixHeaderEditor, PaddingEditor, solo_norm, hri_norm, swap_norm
 
 
 class ITIDataModule(LightningDataModule):
@@ -253,17 +253,17 @@ def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, 
 
 class SDODataset(StackDataset):
 
-    def __init__(self, data, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
+    def __init__(self, data, patch_shape=None, wavelengths=None, resolution=2048, ext='.fits', **kwargs):
+        wavelengths = [171, 193, 211, 304, 6173, ] if wavelengths is None else wavelengths
         if isinstance(data, list):
             paths = data
         else:
-            paths = get_intersecting_files(data, ['171', '193', '211', '304', '6173'], ext=ext, **kwargs)
-        data_sets = [AIADataset(paths[0], 171, resolution=resolution, **kwargs),
-                     AIADataset(paths[1], 193, resolution=resolution, **kwargs),
-                     AIADataset(paths[2], 211, resolution=resolution, **kwargs),
-                     AIADataset(paths[3], 304, resolution=resolution, **kwargs),
-                     HMIDataset(paths[4], 'mag', resolution=resolution)
-                     ]
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+        ds_mapping = {171: AIADataset, 193: AIADataset, 211: AIADataset, 304: AIADataset, 6173: HMIDataset}
+        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                         for wl_id, files in zip(wavelengths, paths)]
+
+
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
@@ -492,3 +492,60 @@ class ZerosDataset(Dataset):
 
     def __getitem__(self, idx):
         return np.zeros(self.shape)
+
+
+
+class EUIDataset(StackDataset):
+
+    def __init__(self, data, patch_shape=None, wavelengths=None, resolution=1024, ext='.fits', **kwargs):
+        wavelengths = [174, 304] if wavelengths is None else wavelengths
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+        ds_mapping = {174: FSIDataset, 304: FSIDataset}
+        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                     for wl_id, files in zip(wavelengths, paths)]
+
+        super().__init__(data_sets, **kwargs)
+        if patch_shape is not None:
+            self.addEditor(BrightestPixelPatchEditor(patch_shape))
+
+
+class FSIDataset(BaseDataset):
+    def __init__(self, data, wavelength=304, resolution=1024, ext='.fits', **kwargs):
+        norm = solo_norm[wavelength]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution),
+                   NormalizeExposureEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+class HRIDataset(BaseDataset):
+    def __init__(self, data, ext='.fits', **kwargs):
+        norm = hri_norm[174]
+
+        editors = [LoadMapEditor(),
+                   NormalizeExposureEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ExpandDimsEditor()]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+
+class SWAPDataset(BaseDataset):
+    def __init__(self, data, wavelength=174, resolution=1024, ext='.fits', **kwargs):
+        norm = swap_norm[wavelength]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution),
+                   NormalizeExposureEditor(),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)

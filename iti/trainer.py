@@ -385,8 +385,8 @@ class Trainer(LightningModule):
             callbacks += [ValidationHistoryCallback(self, ds_valid_A, ds_valid_B, base_dir, 1000)]
         callbacks += additional_callbacks
         # init data loaders
-        B_iterator = loop(DataLoader(ds_B, batch_size=batch_size, shuffle=True, num_workers=num_workers))
-        A_iterator = loop(DataLoader(ds_A, batch_size=batch_size, shuffle=True, num_workers=num_workers))
+        #B_iterator = loop(DataLoader(ds_B, batch_size=batch_size, shuffle=True, num_workers=num_workers))
+        #A_iterator = loop(DataLoader(ds_A, batch_size=batch_size, shuffle=True, num_workers=num_workers))
         # start update cycle
         for it in range(start_it, iterations):
             self.train()

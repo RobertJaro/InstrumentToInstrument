@@ -73,6 +73,13 @@ hinode_norms = {'continuum': ImageNormalize(vmin=0, vmax=50000, stretch=LinearSt
 
 gregor_norms = {'gband': ImageNormalize(vmin=0, vmax=1.8, stretch=LinearStretch(), clip=True)}
 
+solo_norm = {174: ImageNormalize(vmin=0, vmax=2200, stretch=AsinhStretch(0.005), clip=True),
+             304: ImageNormalize(vmin=0, vmax=6500, stretch=AsinhStretch(0.001), clip=True)
+             }
+swap_norm = {174: ImageNormalize(vmin=0, vmax=370, stretch=AsinhStretch(0.001), clip=True)}
+
+hri_norm = {174: ImageNormalize(vmin=0, vmax=8600, stretch=AsinhStretch(0.005), clip=True)}
+
 
 class LoadFITSEditor(Editor):
 

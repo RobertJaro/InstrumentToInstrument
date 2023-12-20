@@ -153,13 +153,19 @@ class SaveCallback(pl.Callback):
         self.checkpoint_dir = checkpoint_dir
         super().__init__()
 
-    def on_validation_epoch_end(self, trainer: "pl.Trainer", module: "pl.LightningModule") -> None:
+    def on_validation_epoch_end(self, trainer: "pl.Trainer", module: "ITIModule") -> None:
+
         state_path = os.path.join(self.checkpoint_dir, 'checkpoint.pt')
         checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_{trainer.global_step:06d}.pt')
         state = {'gen_ab': module.gen_ab,
                  'gen_ba': module.gen_ba,
                  'noise_est': module.estimator_noise,
                  'disc_a': module.dis_a,
-                 'disc_b': module.dis_b}
-        torch.save(state, checkpoint_path)
+                 'disc_b': module.dis_b,
+                 'state_dict': module.state_dict(),
+                 'global_step': trainer.global_step}
         torch.save(state, state_path)
+
+        torch.save(state, checkpoint_path)
+        torch.save(module.gen_ab, os.path.join(self.checkpoint_dir, 'generator_AB.pt'))
+        torch.save(module.gen_ba, os.path.join(self.checkpoint_dir, 'generator_BA.pt'))
