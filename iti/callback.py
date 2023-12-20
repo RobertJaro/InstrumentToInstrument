@@ -156,7 +156,7 @@ class SaveCallback(pl.Callback):
     def on_validation_epoch_end(self, trainer: "pl.Trainer", module: "ITIModule") -> None:
 
         state_path = os.path.join(self.checkpoint_dir, 'checkpoint.pt')
-        checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_{trainer.global_step}.pt')
+        checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_{trainer.global_step:06d}.pt')
         state = {'gen_ab': module.gen_ab,
                  'gen_ba': module.gen_ba,
                  'noise_est': module.estimator_noise,
