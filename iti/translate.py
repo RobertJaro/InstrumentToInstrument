@@ -12,7 +12,8 @@ import torch
 from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
-from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset
+from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset, \
+    SWAPDataset
 from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
 
 
@@ -300,3 +301,25 @@ class KSOFlatConverter(InstrumentConverter):
     def convert(self, paths):
         ds = KSOFlatDataset(paths, self.resolution)
         return self._convertDataset(ds)
+
+class SWAPToAIA(InstrumentToInstrument):
+
+    def __init__(self, model_name='swap_to_aia_v0_1.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+
+    def translate(self, paths):
+        ds = SWAPDataset(paths)
+        for s_map, input, output in self._translateDataset(ds):
+            norm = sdo_norms[171]
+            s_map = Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, 'AIA'))
+            yield s_map
+
+    def toSDOMeta(self, meta, instrument):
+        wl_map = {174: 171}
+        new_meta = meta.copy()
+        new_meta['obsrvtry'] = 'SWAP-to-AIA'
+        new_meta['telescop'] = 'sdo'
+        new_meta['instrume'] = instrument
+        new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
+        new_meta['waveunit'] = 'angstrom'
+        return new_meta
