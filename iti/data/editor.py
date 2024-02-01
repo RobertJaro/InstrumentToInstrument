@@ -23,6 +23,7 @@ from scipy import ndimage
 from skimage.measure import block_reduce
 from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
+import sunpy.sun.constants
 from sunpy.map import Map, all_coordinates_from_map, header_helper
 
 
@@ -320,11 +321,14 @@ class NormalizeExposureEditor(Editor):
 
 
 class NormalizeRadiusEditor(Editor):
-    def __init__(self, resolution, padding_factor=0.1, crop=True, fix_irradiance_with_distance=False, **kwargs):
+    def __init__(self, resolution, padding_factor=0.1, crop=True, rotate_north_up=True, fix_irradiance_with_distance=False, \
+                 scale_irradiance_to_1AU=False, **kwargs):
         self.padding_factor = padding_factor
         self.resolution = resolution
         self.crop = crop
         self.fix_irradiance_with_distance = fix_irradiance_with_distance
+        self.scale_irradiance_to_1AU = scale_irradiance_to_1AU
+        self.rotate_north_up = rotate_north_up
         super(NormalizeRadiusEditor, self).__init__(**kwargs)
 
     def call(self, s_map, **kwargs):
@@ -337,6 +341,10 @@ class NormalizeRadiusEditor(Editor):
         scale_factor = self.resolution / (2 * r_obs_pix.value)
         s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
         s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
+        if self.rotate_north_up:
+            s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
+        else:
+            s_map = s_map.rotate(angle=0*u.deg, recenter=False, scale=scale_factor, missing=0, order=4)
         if self.crop:
             arcs_frame = (self.resolution / 2) * s_map.scale[0].value
             s_map = s_map.submap(bottom_left=SkyCoord(-arcs_frame * u.arcsec, -arcs_frame * u.arcsec, frame=s_map.coordinate_frame),
@@ -361,6 +369,8 @@ class NormalizeRadiusEditor(Editor):
             # Change intensity due to distance change
             s_map.data[:] = s_map.data[:] * (old_meta['dsun_obs']**2)/(s_map.meta['dsun_obs']**2)
 
+        if self.scale_irradiance_to_1AU:
+            s_map.data[:] = s_map.data[:] * (s_map.meta['dsun_obs'] / sunpy.sun.constants.au.value) ** 2
         return s_map
 
 

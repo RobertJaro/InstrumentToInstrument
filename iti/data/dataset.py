@@ -518,7 +518,6 @@ class FSIDataset(BaseDataset):
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
-                   NormalizeExposureEditor(),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
@@ -530,7 +529,7 @@ class HRIDataset(BaseDataset):
         norm = hri_norm[174]
 
         editors = [LoadMapEditor(),
-                   NormalizeExposureEditor(),
+                   NormalizeRadiusEditor(resolution=8192, crop=True, rotate_north_up=False),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
@@ -544,7 +543,6 @@ class SWAPDataset(BaseDataset):
 
         editors = [LoadMapEditor(),
                    NormalizeRadiusEditor(resolution),
-                   NormalizeExposureEditor(),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
