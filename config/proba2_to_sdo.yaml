@@ -1,0 +1,23 @@
+base_dir: /mnt/disks/data/Proba2_to_SDO
+data:
+  B_path: /mnt/disks/data/SDO/171
+  converted_B_path: /mnt/disks/data/converted/sdo_swap
+  A_path: /mnt/disks/data/SWAP/174
+  converted_A_path: /mnt/disks/data/converted/swap
+  num_workers: 4
+  iterations_per_epoch: 1000
+model:
+  input_dim_a: 1
+  input_dim_b: 1
+  upsampling: 1
+  discriminator_mode: SINGLE
+  lambda_diversity: 0
+  norm: in_rs_aff
+  use_batch_statistic: False
+logging:
+  wandb_entity: christoph-schirninger
+  wandb_project: ITI
+  wandb_name: PROBA2_to_SDO
+  wandb_id: null
+training:
+  epochs: 220000
