@@ -642,6 +642,22 @@ class PaddingEditor(Editor):
         return np.pad(data, pad, 'constant', constant_values=np.nan)
 
 
+
+class SWAPPrepEditor(Editor):
+
+    def __init__(self, degradation=None):
+        self.degradation_fit = np.poly1d(degradation) if degradation else False
+
+    def call(self, s_map, **kwargs):
+        assert s_map.meta['NAXIS1'] == 1024 and s_map.meta[
+            'NAXIS2'] == 1024, 'Found invalid resolution: %s' % s_map.date.datetime.isoformat()
+        if self.degradation_fit:
+            x = mdates.date2num(s_map.date.datetime)
+            correction = self.degradation_fit(x)
+            s_map = Map(s_map.data / correction, s_map.meta)
+        return s_map
+
+
 class UnpaddingEditor(Editor):
     def __init__(self, target_shape):
         self.target_shape = target_shape
