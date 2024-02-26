@@ -21,7 +21,7 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor, PaddingEditor, solo_norm, hri_norm, swap_norm
+    SOHOFixHeaderEditor, PaddingEditor, solo_norm, hri_norm, swap_norm, SWAPPrepEditor
 
 
 class ITIDataModule(LightningDataModule):
@@ -537,13 +537,16 @@ class HRIDataset(BaseDataset):
 
 
 
-class SWAPDataset(BaseDataset):
-    def __init__(self, data, wavelength=174, resolution=1024, ext='.fits', **kwargs):
+class Proba2Dataset(BaseDataset):
+    def __init__(self, data, wavelength=174, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
         norm = swap_norm[wavelength]
 
         editors = [LoadMapEditor(),
+                   SWAPPrepEditor(degradation=[-3.37591548e-05, 1.50555178e+00]),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(data, editors=editors, ext=ext, **kwargs)
+        if patch_shape is not None:
+            self.addEditor(BrightestPixelPatchEditor(patch_shape))
