@@ -517,7 +517,7 @@ class FSIDataset(BaseDataset):
         norm = solo_norm[wavelength]
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(resolution),
+                   NormalizeRadiusEditor(resolution, fix_irradiance_with_distance=True),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ReshapeEditor((1, resolution, resolution))]
@@ -529,7 +529,7 @@ class HRIDataset(BaseDataset):
         norm = hri_norm[174]
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(resolution=8192, crop=True, rotate_north_up=False),
+                   NormalizeRadiusEditor(resolution=8192, crop=True, rotate_north_up=False, fix_irradiance_with_distance=True),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
