@@ -11,7 +11,8 @@ from typing import List, Union
 import numpy as np
 from astropy.visualization import AsinhStretch
 from dateutil.parser import parse
-from torch.utils.data import Dataset, DataLoader
+from lightning import LightningDataModule
+from torch.utils.data import Dataset, DataLoader, RandomSampler
 from tqdm import tqdm
 
 from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
@@ -20,7 +21,37 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor, PaddingEditor
+    SOHOFixHeaderEditor, PaddingEditor, solo_norm, hri_norm, swap_norm, SWAPPrepEditor
+
+
+class ITIDataModule(LightningDataModule):
+
+    def __init__(self, A_train_ds, B_train_ds, A_valid_ds, B_valid_ds, iterations_per_epoch=10000, num_workers=4, batch_size=1, **kwargs):
+        super().__init__()
+        self.A_train_ds = A_train_ds
+        self.B_train_ds = B_train_ds
+        self.A_valid_ds = A_valid_ds
+        self.B_valid_ds = B_valid_ds
+        self.num_workers = num_workers
+        self.batch_size = batch_size
+        self.iterations_per_epoch = iterations_per_epoch
+
+    def train_dataloader(self):
+        gen_A = DataLoader(self.A_train_ds, batch_size=self.batch_size, num_workers=self.num_workers,
+                           sampler=RandomSampler(self.A_train_ds, replacement=True, num_samples=self.iterations_per_epoch))
+        dis_A = DataLoader(self.A_train_ds, batch_size=self.batch_size, num_workers=self.num_workers,
+                            sampler=RandomSampler(self.A_train_ds, replacement=True, num_samples=self.iterations_per_epoch))
+        gen_B = DataLoader(self.B_train_ds, batch_size=self.batch_size, num_workers=self.num_workers,
+                            sampler=RandomSampler(self.B_train_ds, replacement=True, num_samples=self.iterations_per_epoch))
+        dis_B = DataLoader(self.B_train_ds, batch_size=self.batch_size, num_workers=self.num_workers,
+                            sampler=RandomSampler(self.B_train_ds, replacement=True, num_samples=self.iterations_per_epoch))
+        return {"gen_A": gen_A, "dis_A": dis_A, "gen_B": gen_B, "dis_B": dis_B}
+
+    def val_dataloader(self):
+        A = DataLoader(self.A_valid_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        B = DataLoader(self.B_valid_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        return [A, B]
+
 
 
 class Norm(Enum):
@@ -160,7 +191,12 @@ class StorageDataset(Dataset):
         id = self.dataset.getId(idx)
         store_path = os.path.join(self.store_dir, '%s.npy' % id)
         if os.path.exists(store_path):
-            data = np.load(store_path, mmap_mode='r')
+            try:
+                data = np.load(store_path, mmap_mode='r')
+            except Exception as ex:
+                logging.error('Unable to load %s: %s' % (store_path, ex))
+                data = self.dataset[idx]
+                np.save(store_path, data)
             data = self.convertData(data)
             return data
         data = self.dataset[idx]
@@ -217,17 +253,17 @@ def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, 
 
 class SDODataset(StackDataset):
 
-    def __init__(self, data, patch_shape=None, resolution=2048, ext='.fits', **kwargs):
+    def __init__(self, data, patch_shape=None, wavelengths=None, resolution=2048, ext='.fits', **kwargs):
+        wavelengths = [171, 193, 211, 304, 6173, ] if wavelengths is None else wavelengths
         if isinstance(data, list):
             paths = data
         else:
-            paths = get_intersecting_files(data, ['171', '193', '211', '304', '6173'], ext=ext, **kwargs)
-        data_sets = [AIADataset(paths[0], 171, resolution=resolution, **kwargs),
-                     AIADataset(paths[1], 193, resolution=resolution, **kwargs),
-                     AIADataset(paths[2], 211, resolution=resolution, **kwargs),
-                     AIADataset(paths[3], 304, resolution=resolution, **kwargs),
-                     HMIDataset(paths[4], 'mag', resolution=resolution)
-                     ]
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+        ds_mapping = {171: AIADataset, 193: AIADataset, 211: AIADataset, 304: AIADataset, 6173: HMIDataset}
+        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                         for wl_id, files in zip(wavelengths, paths)]
+
+
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
             self.addEditor(BrightestPixelPatchEditor(patch_shape))
@@ -456,3 +492,61 @@ class ZerosDataset(Dataset):
 
     def __getitem__(self, idx):
         return np.zeros(self.shape)
+
+
+
+class EUIDataset(StackDataset):
+
+    def __init__(self, data, patch_shape=None, wavelengths=None, resolution=1024, ext='.fits', **kwargs):
+        wavelengths = [174, 304] if wavelengths is None else wavelengths
+        if isinstance(data, list):
+            paths = data
+        else:
+            paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
+        ds_mapping = {174: FSIDataset, 304: FSIDataset}
+        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                     for wl_id, files in zip(wavelengths, paths)]
+
+        super().__init__(data_sets, **kwargs)
+        if patch_shape is not None:
+            self.addEditor(BrightestPixelPatchEditor(patch_shape))
+
+
+class FSIDataset(BaseDataset):
+    def __init__(self, data, wavelength=304, resolution=1024, ext='.fits', **kwargs):
+        norm = solo_norm[wavelength]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution, fix_irradiance_with_distance=True),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+class HRIDataset(BaseDataset):
+    def __init__(self, data, ext='.fits', **kwargs):
+        norm = hri_norm[174]
+
+        editors = [LoadMapEditor(),
+                   NormalizeRadiusEditor(resolution=8192, crop=True, rotate_north_up=False, fix_irradiance_with_distance=True),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ExpandDimsEditor()]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+
+
+
+class Proba2Dataset(BaseDataset):
+    def __init__(self, data, wavelength=174, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
+        norm = swap_norm[wavelength]
+
+        editors = [LoadMapEditor(),
+                   SWAPPrepEditor(degradation=[-3.37591548e-05, 1.50555178e+00]),
+                   NormalizeRadiusEditor(resolution),
+                   MapToDataEditor(),
+                   NormalizeEditor(norm),
+                   ReshapeEditor((1, resolution, resolution))]
+        super().__init__(data, editors=editors, ext=ext, **kwargs)
+        if patch_shape is not None:
+            self.addEditor(BrightestPixelPatchEditor(patch_shape))

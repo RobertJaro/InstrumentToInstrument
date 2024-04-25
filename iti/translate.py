@@ -1,4 +1,6 @@
+
 import os
+from contextlib import closing
 from multiprocessing.pool import Pool
 from pathlib import Path
 from typing import List, Tuple
@@ -10,7 +12,8 @@ import torch
 from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
-from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset
+from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset, \
+    SWAPDataset
 from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
 
 
@@ -34,7 +37,7 @@ class InstrumentToInstrument:
         raise NotImplementedError()
 
     def _translateDataset(self, dataset):
-        with Pool(self.n_workers) as pool:
+        with closing(Pool(self.n_workers)) as pool:
             for img, kwargs in pool.imap(dataset.convertData, dataset.data):
                 #
                 original_shape = img.shape
@@ -64,6 +67,7 @@ class InstrumentToInstrument:
                 # use last meta data as reference for additional observables
                 ref_meta += [ref_meta[-1]] * (len(iti_img) - len(ref_meta))
                 #
+                # for synthesis of channel information: 4 --> 5 channels (create proper meta data)
                 ref_img = img.tolist()
                 ref_img += [ref_img[-1]] * (len(iti_img) - len(ref_img))  # extend list
                 ref_img = np.array(ref_img)
@@ -192,8 +196,8 @@ class STEREOToSDO(InstrumentToInstrument):
         super().__init__(model_name, **kwargs)
 
     def translate(self, path, basenames=None, return_arrays=False):
-        soho_dataset = STEREODataset(path, basenames=basenames)
-        for result, inputs, outputs in self._translateDataset(soho_dataset):
+        stereo_dataset = STEREODataset(path, basenames=basenames)
+        for result, inputs, outputs in self._translateDataset(stereo_dataset):
             norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
             result = [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instrument, wl))
                       for s_map, norm, instrument, wl in
@@ -297,3 +301,25 @@ class KSOFlatConverter(InstrumentConverter):
     def convert(self, paths):
         ds = KSOFlatDataset(paths, self.resolution)
         return self._convertDataset(ds)
+
+class SWAPToAIA(InstrumentToInstrument):
+
+    def __init__(self, model_name='swap_to_aia_v0_1.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+
+    def translate(self, paths):
+        ds = SWAPDataset(paths)
+        for s_map, input, output in self._translateDataset(ds):
+            norm = sdo_norms[171]
+            s_map = Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, 'AIA'))
+            yield s_map
+
+    def toSDOMeta(self, meta, instrument):
+        wl_map = {174: 171}
+        new_meta = meta.copy()
+        new_meta['obsrvtry'] = 'SWAP-to-AIA'
+        new_meta['telescop'] = 'sdo'
+        new_meta['instrume'] = instrument
+        new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
+        new_meta['waveunit'] = 'angstrom'
+        return new_meta
