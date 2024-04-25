@@ -11,10 +11,13 @@ collections.MutableMapping = collections.abc.MutableMapping
 #Now import hyper
 import torch
 import yaml
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
+from lightning import Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
 #from lightning.pytorch.strategies import DataParallelStrategy
+
+from rs_tools._src.datamodule.datasets import GeoDataset
+from rs_tools._src.datamodule.editor import NanMaskEditor, CoordNormEditor, NanDictEditor, RadUnitEditor, ToTensorEditor, StackDictEditor
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -23,11 +26,9 @@ from iti.callback import SaveCallback, PlotBAB, PlotABA
 from iti.data.dataset import ITIDataModule
 from iti.iti import ITIModule
 
-
-
 parser = argparse.ArgumentParser(description='Train MSG to GOES translations')
 parser.add_argument('--config', 
-                    default="../config/example-nohydra/msg_to_goes.yaml",
+                    default="config/msg_to_goes.yaml",
                     type=str, 
                     help='path to the config file.')
 
@@ -47,33 +48,57 @@ data_config = config['data']
 msg_path = data_config['A_path']
 goes_path = data_config['B_path']
 
-"""
+splits_dict = { 
+    "train": {"years": None, "months": None, "days": None},
+    "val": {"years": None, "months": None, "days": None},
+}
 
-test_months = [11, 12]
-train_months = list(range(2, 10))
-
-sdo_dataset = AIADataset(sdo_path, wavelength=171, months=train_months)
-sdo_dataset = StorageDataset(sdo_dataset,
-                             sdo_converted_path,
-                             ext_editors=[RandomPatchEditor((256, 256))])
-
-swap_dataset = Proba2Dataset(swap_path, months=train_months)
-swap_dataset = StorageDataset(swap_dataset, swap_converted_path,
-                                ext_editors=[RandomPatchEditor((128, 128))])
-
-sdo_valid = StorageDataset(AIADataset(sdo_path, wavelength=171, months=test_months, limit=100),
-                           sdo_converted_path, ext_editors=[RandomPatchEditor((256, 256))])
-swap_valid = StorageDataset(Proba2Dataset(swap_path, months=test_months, limit=100),
-                              swap_converted_path, ext_editors=[RandomPatchEditor((128, 128))])
-
-data_module = ITIDataModule(swap_dataset, sdo_dataset, swap_valid, sdo_valid, **config['data'])
-
-plot_settings_A = [
-    {"cmap": cm.sdoaia171, "title": "SWAP 174", 'vmin': -1, 'vmax': 1},
+editors = [
+    # BandSelectionEditor(target_bands=[0.47, 13.27]),
+    NanMaskEditor(key="data"), # Attaches nan_mask to the data dict
+    CoordNormEditor(key="coords"), # Normalizes lats/lons to [-1, 1]
+    NanDictEditor(key="data", fill_value=0), # Replaces NaNs in data
+    NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
+    NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
+    RadUnitEditor(key="data"),
+    StackDictEditor(),
+    ToTensorEditor(),
 ]
-plot_settings_B = [
-    {"cmap": cm.sdoaia171, "title": "AIA 171", 'vmin': -1, 'vmax': 1},
-]
+
+# TODO: Add data normalization!!!
+
+msg_dataset = GeoDataset(
+    data_dir=msg_path,
+    editors=editors,
+    splits_dict=splits_dict['train'],
+    load_coords=False,
+    load_cloudmask=False,
+)
+msg_valid = GeoDataset(
+    data_dir=msg_path,
+    editors=editors,
+    splits_dict=splits_dict['val'],
+    load_coords=False,
+    load_cloudmask=False,
+)
+
+goes_dataset = GeoDataset(
+    data_dir=goes_path,
+    editors=editors,
+    splits_dict=splits_dict['train'],
+    load_coords=False,
+    load_cloudmask=False,
+)
+
+goes_valid = GeoDataset(
+    data_dir=goes_path,
+    editors=editors,
+    splits_dict=splits_dict['val'],
+    load_coords=False,
+    load_cloudmask=False,
+)
+
+data_module = ITIDataModule(msg_dataset, goes_dataset, msg_valid, goes_valid, **config['data'])
 
 # setup logging
 logging_config = config['logging']
@@ -82,8 +107,6 @@ log_model = logging_config['wandb_log_model'] if 'wandb_log_model' in logging_co
 wandb_logger = WandbLogger(project=logging_config['wandb_project'], name=logging_config['wandb_name'], offline=False,
                            entity=logging_config['wandb_entity'], id=wandb_id, dir=config['base_dir'], log_model=log_model)
 wandb_logger.experiment.config.update(config, allow_val_change=True)
-
-
 
 # Start training
 module = ITIModule(**config['model'])
@@ -96,18 +119,16 @@ save_callback = SaveCallback(base_dir)
 #prediction_dir = os.path.join(base_dir, 'prediction')
 #os.makedirs(prediction_dir, exist_ok=True)
 plot_callbacks = []
-plot_callbacks += [PlotBAB(sdo_valid.sample(4), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
-plot_callbacks += [PlotABA(swap_valid.sample(4), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
+# plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
+# plot_callbacks += [PlotABA(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
 
 n_gpus = torch.cuda.device_count()
 trainer = Trainer(max_epochs=int(config['training']['epochs']),
                   logger=wandb_logger,
                   devices=n_gpus if n_gpus > 0 else None,
-                  accelerator="gpu" if n_gpus >= 1 else None,
-                  strategy='dp' if n_gpus > 1 else None,  # ddp breaks memory and wandb
+                  accelerator="gpu" if n_gpus >= 1 else "auto",
+                  strategy='dp' if n_gpus > 1 else "auto",  # ddp breaks memory and wandb
                   num_sanity_val_steps=0,
                   callbacks=[checkpoint_callback, save_callback, *plot_callbacks],)
 
 trainer.fit(module, data_module, ckpt_path='last')
-
-"""
