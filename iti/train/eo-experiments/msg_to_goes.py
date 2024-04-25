@@ -106,7 +106,7 @@ wandb_id = logging_config['wandb_id'] if 'wandb_id' in logging_config else None
 log_model = logging_config['wandb_log_model'] if 'wandb_log_model' in logging_config else False
 wandb_logger = WandbLogger(project=logging_config['wandb_project'], name=logging_config['wandb_name'], offline=False,
                            entity=logging_config['wandb_entity'], id=wandb_id, dir=config['base_dir'], log_model=log_model)
-wandb_logger.experiment.config.update(config, allow_val_change=True)
+# wandb_logger.experiment.config.update(config, allow_val_change=True)
 
 # Start training
 module = ITIModule(**config['model'])
@@ -123,10 +123,11 @@ plot_callbacks = []
 # plot_callbacks += [PlotABA(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
 
 n_gpus = torch.cuda.device_count()
+n_cpus = os.cpu_count()
 trainer = Trainer(max_epochs=int(config['training']['epochs']),
                   logger=wandb_logger,
-                  devices=n_gpus if n_gpus > 0 else None,
-                  accelerator="gpu" if n_gpus >= 1 else "auto",
+                  devices=n_gpus if n_gpus > 0 else n_cpus,
+                  accelerator="gpu" if n_gpus >= 1 else "cpu",
                   strategy='dp' if n_gpus > 1 else "auto",  # ddp breaks memory and wandb
                   num_sanity_val_steps=0,
                   callbacks=[checkpoint_callback, save_callback, *plot_callbacks],)
