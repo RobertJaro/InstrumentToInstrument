@@ -1,18 +1,18 @@
-base_dir: /Users/anna.jungbluth/Desktop/ITI
+base_dir: /home/anna.jungbluth/data
 data:
-  B_path: /Users/anna.jungbluth/Desktop/git/rs_tools/data/msg/analysis
-  # converted_B_path: 
-  A_path: /Users/anna.jungbluth/Desktop/git/rs_tools/data/goes16/analysis
+  A_path: /home/anna.jungbluth/data/msg/analysis
   # converted_A_path:
+  B_path: /home/anna.jungbluth/data/goes16/analysis
+  # converted_B_path: 
   num_workers: 1
   iterations_per_epoch: 1000
 model:
   input_dim_a: 11
   input_dim_b: 16
-  upsampling: 1
+  upsampling: 0
   discriminator_mode: CHANNELS
   lambda_diversity: 0
-  norm: in_rs_aff
+  norm: 'none'
   use_batch_statistic: False
 logging:
   wandb_entity: annajungbluth

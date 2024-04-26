@@ -3,6 +3,9 @@ import os
 import collections.abc
 import shutil
 
+import sys
+sys.path.append("/home/anna.jungbluth/rs_tools")
+sys.path.append("/home/anna.jungbluth/InstrumentToInstrument/")
 #hyper needs the four following aliases to be done manually.
 collections.Iterable = collections.abc.Iterable
 collections.Mapping = collections.abc.Mapping
@@ -28,7 +31,7 @@ from iti.iti import ITIModule
 
 parser = argparse.ArgumentParser(description='Train MSG to GOES translations')
 parser.add_argument('--config', 
-                    default="config/msg_to_goes.yaml",
+                    default="/home/anna.jungbluth/InstrumentToInstrument/config/msg_to_goes.yaml",
                     type=str, 
                     help='path to the config file.')
 
@@ -55,11 +58,11 @@ splits_dict = {
 
 editors = [
     # BandSelectionEditor(target_bands=[0.47, 13.27]),
-    NanMaskEditor(key="data"), # Attaches nan_mask to the data dict
-    CoordNormEditor(key="coords"), # Normalizes lats/lons to [-1, 1]
+    # NanMaskEditor(key="data"), # Attaches nan_mask to the data dict
+    # CoordNormEditor(key="coords"), # Normalizes lats/lons to [-1, 1]
     NanDictEditor(key="data", fill_value=0), # Replaces NaNs in data
-    NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
-    NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
+    # NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
+    # NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
     RadUnitEditor(key="data"),
     StackDictEditor(),
     ToTensorEditor(),
@@ -124,12 +127,15 @@ plot_callbacks = []
 
 n_gpus = torch.cuda.device_count()
 n_cpus = os.cpu_count()
-trainer = Trainer(max_epochs=int(config['training']['epochs']),
-                  logger=wandb_logger,
-                  devices=n_gpus if n_gpus > 0 else n_cpus,
-                  accelerator="gpu" if n_gpus >= 1 else "cpu",
-                  strategy='dp' if n_gpus > 1 else "auto",  # ddp breaks memory and wandb
-                  num_sanity_val_steps=0,
-                  callbacks=[checkpoint_callback, save_callback, *plot_callbacks],)
+trainer = Trainer(
+    max_epochs=int(config['training']['epochs']),
+    fast_dev_run=True,
+    logger=wandb_logger,
+    devices=n_gpus if n_gpus > 0 else n_cpus,
+    accelerator="gpu" if n_gpus >= 1 else "cpu",
+    strategy='dp' if n_gpus > 1 else "auto",  # ddp breaks memory and wandb
+    num_sanity_val_steps=0,
+    callbacks=[checkpoint_callback, save_callback, *plot_callbacks],
+)
 
 trainer.fit(module, data_module, ckpt_path='last')

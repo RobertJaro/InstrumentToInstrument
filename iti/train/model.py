@@ -404,7 +404,8 @@ class Conv2dBlock(nn.Module):
             conv.bias.data.zero_()
 
     def forward(self, x):
-        x = self.conv(self.pad(x))
+        x = self.pad(x)
+        x = self.conv(x)
         if self.norm:
             x = self.norm(x)
         if self.activation:
