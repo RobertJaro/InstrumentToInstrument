@@ -10,8 +10,8 @@ import torch
 from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
-from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset
-from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
+from itipy.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset
+from itipy.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
 
 
 class InstrumentToInstrument:

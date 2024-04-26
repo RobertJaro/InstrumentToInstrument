@@ -5,24 +5,20 @@ import os
 import numpy as np
 from sunpy.visualization.colormaps import cm
 
-from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
-from iti.data.editor import RandomPatchEditor, LambdaEditor, BrightestPixelPatchEditor, BlockReduceEditor
-from iti.train.model import DiscriminatorMode
-from iti.trainer import Trainer
+from itipy.data.dataset import SDODataset, StorageDataset
+from itipy.data.editor import SliceEditor, RandomPatchEditor, LambdaEditor
+from itipy.train.model import DiscriminatorMode
+from itipy.trainer import Trainer
 
-parser = argparse.ArgumentParser(description='Train STEREO-To-SDO translations with synthetic magnetograms')
+parser = argparse.ArgumentParser(description='Train SDO EUV-To-magnetogram translations (unsigned)')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')
 
 parser.add_argument('--sdo_path', type=str, help='path to the SDO data.')
-parser.add_argument('--stereo_path', type=str, help='path to the STEREO data.')
 parser.add_argument('--sdo_converted_path', type=str, help='path to store the converted SDO data.')
-parser.add_argument('--stereo_converted_path', type=str, help='path to store the converted STEREO data.')
 
 args = parser.parse_args()
 base_dir = args.base_dir
 
-stereo_path = args.stereo_path
-stereo_converted_path = args.stereo_converted_path
 sdo_path = args.sdo_path
 sdo_converted_path = args.sdo_converted_path
 
@@ -40,33 +36,26 @@ logging.basicConfig(
 trainer = Trainer(4, 5, upsampling=0, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0,
                   norm='in_rs_aff')
 trainer.cuda()
-start_it = trainer.resume(base_dir)
 
 
-# Init Dataset
 def absolute_mag(data, **kwargs):
     data[-1] = np.abs(data[-1]) * 2 - 1
     return data
 
 
 abs_mag_editor = LambdaEditor(absolute_mag)
-block_reduce_editor = BlockReduceEditor(block_size=(1, 2, 2))
 
-test_months = [11, 12]
-train_months = list(range(2, 10))
+sdo_train = SDODataset(sdo_path, resolution=512, months=list(range(2, 10)), years=list(range(2011, 2021)))
+sdo_euv_train = StorageDataset(sdo_train, sdo_converted_path,
+                               ext_editors=[SliceEditor(0, 4), RandomPatchEditor((256, 256))])
+sdo_mag_train = StorageDataset(sdo_train, sdo_converted_path,
+                               ext_editors=[RandomPatchEditor((256, 256)), abs_mag_editor])
 
-sdo_train = SDODataset(sdo_path, resolution=2048, patch_shape=(1024, 1024), months=train_months)
-sdo_train = StorageDataset(sdo_train, sdo_converted_path,
-                           ext_editors=[RandomPatchEditor((512, 512)), block_reduce_editor, abs_mag_editor])
-
-stereo_train = STEREODataset(stereo_path, months=test_months)
-stereo_train = StorageDataset(stereo_train, stereo_converted_path,
-                              ext_editors=[BrightestPixelPatchEditor((512, 512)), RandomPatchEditor((256, 256))])
-
-sdo_valid = SDODataset(sdo_path, resolution=2048)
-sdo_valid.addEditor(block_reduce_editor)
-sdo_valid.addEditor(abs_mag_editor)
-stereo_valid = STEREODataset(stereo_path)
+sdo_valid = SDODataset(sdo_path, resolution=512, limit=100, months=[11, 12])
+sdo_euv_valid = StorageDataset(sdo_valid, sdo_converted_path,
+                               ext_editors=[SliceEditor(0, 4), RandomPatchEditor((256, 256))])
+sdo_mag_valid = StorageDataset(sdo_valid, sdo_converted_path,
+                               ext_editors=[RandomPatchEditor((256, 256)), abs_mag_editor])
 
 plot_settings_A = [
     {"cmap": cm.sdoaia171, "title": "SECCHI 171", 'vmin': -1, 'vmax': 1},
@@ -82,6 +71,5 @@ plot_settings_B = [
     {"cmap": "gray", "title": "HMI Magnetogram", 'vmin': -1, 'vmax': 1}
 ]
 
-# Start training
-trainer.startBasicTraining(base_dir, stereo_train, sdo_train, stereo_valid, sdo_valid,
-                           plot_settings_A, plot_settings_B)
+trainer.startBasicTraining(base_dir, sdo_euv_train, sdo_mag_train, sdo_euv_valid, sdo_mag_valid,
+                           plot_settings_A, plot_settings_B, num_workers=4)

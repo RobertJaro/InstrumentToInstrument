@@ -2,14 +2,15 @@ import argparse
 import logging
 import os
 
+import numpy as np
 from sunpy.visualization.colormaps import cm
 
-from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
-from iti.data.editor import RandomPatchEditor, SliceEditor, BrightestPixelPatchEditor
-from iti.train.model import DiscriminatorMode
-from iti.trainer import Trainer
+from itipy.data.dataset import SDODataset, StorageDataset, STEREODataset
+from itipy.data.editor import RandomPatchEditor, LambdaEditor, BrightestPixelPatchEditor, BlockReduceEditor
+from itipy.train.model import DiscriminatorMode
+from itipy.trainer import Trainer
 
-parser = argparse.ArgumentParser(description='Train STEREO-To-SDO translations')
+parser = argparse.ArgumentParser(description='Train STEREO-To-SDO translations with synthetic magnetograms')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')
 
 parser.add_argument('--sdo_path', type=str, help='path to the SDO data.')
@@ -36,41 +37,51 @@ logging.basicConfig(
     ])
 
 # Init Model
-trainer = Trainer(4, 4, upsampling=2, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0,
-                  norm='in_rs_aff', use_batch_statistic=False)
+trainer = Trainer(4, 5, upsampling=0, discriminator_mode=DiscriminatorMode.CHANNELS, lambda_diversity=0,
+                  norm='in_rs_aff')
 trainer.cuda()
+start_it = trainer.resume(base_dir)
+
 
 # Init Dataset
+def absolute_mag(data, **kwargs):
+    data[-1] = np.abs(data[-1]) * 2 - 1
+    return data
+
+
+abs_mag_editor = LambdaEditor(absolute_mag)
+block_reduce_editor = BlockReduceEditor(block_size=(1, 2, 2))
+
 test_months = [11, 12]
 train_months = list(range(2, 10))
 
-sdo_dataset = SDODataset(sdo_path, resolution=4096, patch_shape=(1024, 1024), months=train_months)
-sdo_dataset = StorageDataset(sdo_dataset,
-                             sdo_converted_path,
-                             ext_editors=[SliceEditor(0, -1),
-                                          RandomPatchEditor((512, 512))])
+sdo_train = SDODataset(sdo_path, resolution=2048, patch_shape=(1024, 1024), months=train_months)
+sdo_train = StorageDataset(sdo_train, sdo_converted_path,
+                           ext_editors=[RandomPatchEditor((512, 512)), block_reduce_editor, abs_mag_editor])
 
-stereo_dataset = StorageDataset(STEREODataset(stereo_path, months=train_months), stereo_converted_path,
-                                ext_editors=[BrightestPixelPatchEditor((256, 256)), RandomPatchEditor((128, 128))])
+stereo_train = STEREODataset(stereo_path, months=test_months)
+stereo_train = StorageDataset(stereo_train, stereo_converted_path,
+                              ext_editors=[BrightestPixelPatchEditor((512, 512)), RandomPatchEditor((256, 256))])
 
-sdo_valid = StorageDataset(SDODataset(sdo_path, resolution=4096, patch_shape=(1024, 1024), months=test_months),
-                           sdo_converted_path, ext_editors=[RandomPatchEditor((512, 512)), SliceEditor(0, -1)])
-stereo_valid = StorageDataset(STEREODataset(stereo_path, patch_shape=(1024, 1024), months=test_months),
-                              stereo_converted_path, ext_editors=[RandomPatchEditor((128, 128))])
+sdo_valid = SDODataset(sdo_path, resolution=2048)
+sdo_valid.addEditor(block_reduce_editor)
+sdo_valid.addEditor(abs_mag_editor)
+stereo_valid = STEREODataset(stereo_path)
 
 plot_settings_A = [
     {"cmap": cm.sdoaia171, "title": "SECCHI 171", 'vmin': -1, 'vmax': 1},
     {"cmap": cm.sdoaia193, "title": "SECCHI 195", 'vmin': -1, 'vmax': 1},
     {"cmap": cm.sdoaia211, "title": "SECCHI 284", 'vmin': -1, 'vmax': 1},
-    {"cmap": cm.sdoaia304, "title": "SECCHI 304", 'vmin': -1, 'vmax': 1},
+    {"cmap": cm.sdoaia304, "title": "SECCHI 304", 'vmin': -1, 'vmax': 1}
 ]
 plot_settings_B = [
     {"cmap": cm.sdoaia171, "title": "AIA 171", 'vmin': -1, 'vmax': 1},
     {"cmap": cm.sdoaia193, "title": "AIA 193", 'vmin': -1, 'vmax': 1},
     {"cmap": cm.sdoaia211, "title": "AIA 211", 'vmin': -1, 'vmax': 1},
     {"cmap": cm.sdoaia304, "title": "AIA 304", 'vmin': -1, 'vmax': 1},
+    {"cmap": "gray", "title": "HMI Magnetogram", 'vmin': -1, 'vmax': 1}
 ]
 
 # Start training
-trainer.startBasicTraining(base_dir, stereo_dataset, sdo_dataset, stereo_valid, sdo_valid,
+trainer.startBasicTraining(base_dir, stereo_train, sdo_train, stereo_valid, sdo_valid,
                            plot_settings_A, plot_settings_B)

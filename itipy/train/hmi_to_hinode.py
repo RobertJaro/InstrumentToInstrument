@@ -3,10 +3,10 @@ import logging
 import os
 from random import sample
 
-from iti.data.editor import RandomPatchEditor
+from itipy.data.editor import RandomPatchEditor
 
-from iti.data.dataset import StorageDataset, HMIContinuumDataset, HinodeDataset
-from iti.trainer import Trainer
+from itipy.data.dataset import StorageDataset, HMIContinuumDataset, HinodeDataset
+from itipy.trainer import Trainer
 
 import pandas as pd
 
@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='Train HMI-To-Hinode translations')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')
 
 parser.add_argument('--hinode_path', type=str, help='path to the Hinode data.')
-parser.add_argument('--hinode_file_list', type=str, help='path to the Hinode file list (see iti.data.hinode.classify).')
+parser.add_argument('--hinode_file_list', type=str, help='path to the Hinode file list (see pyiti.data.hinode.classify).')
 parser.add_argument('--hmi_path', type=str, help='path to the HMI data.')
 parser.add_argument('--hinode_converted_path', type=str, help='path to store the converted Hinode data.')
 parser.add_argument('--hmi_converted_path', type=str, help='path to store the converted HMI data.')

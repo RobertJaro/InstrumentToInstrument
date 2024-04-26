@@ -2,11 +2,11 @@ import argparse
 import logging
 import os
 
-from iti.callback import HistoryCallback, ProgressCallback, \
+from itipy.callback import HistoryCallback, ProgressCallback, \
     SaveCallback
-from iti.data.dataset import StorageDataset, KSOFlatDataset
-from iti.data.editor import BrightestPixelPatchEditor
-from iti.trainer import Trainer
+from itipy.data.dataset import StorageDataset, KSOFlatDataset
+from itipy.data.editor import BrightestPixelPatchEditor
+from itipy.trainer import Trainer
 
 parser = argparse.ArgumentParser(description='Train mitigation of atmospheric degradations from KSO Halpha observations')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')

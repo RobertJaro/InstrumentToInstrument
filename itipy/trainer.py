@@ -11,7 +11,7 @@ from torch.autograd import Variable
 from torch.nn import InstanceNorm2d
 from torch.utils.data import DataLoader
 
-from iti.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
+from itipy.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
 
 
 class Trainer(nn.Module):
@@ -366,7 +366,7 @@ class Trainer(nn.Module):
         self.cuda()
         start_it = self.resume(base_dir)
         # Init Callbacks
-        from iti.callback import HistoryCallback, ProgressCallback, SaveCallback, PlotBAB, PlotABA, ValidationHistoryCallback
+        from itipy.callback import HistoryCallback, ProgressCallback, SaveCallback, PlotBAB, PlotABA, ValidationHistoryCallback
         history_callback = HistoryCallback(self, base_dir)
         progress_callback = ProgressCallback(self)
         save_callback = SaveCallback(self, base_dir)
