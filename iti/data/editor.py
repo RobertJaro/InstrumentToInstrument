@@ -193,6 +193,15 @@ class ImageNormalizeEditor(Editor):
         data = self.norm(data).data * 2 - 1
         return data
 
+class MapImageNormalizeEditor(Editor):
+
+    def __init__(self, vmin=None, vmax=None, stretch=LinearStretch()):
+        self.norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=stretch, clip=True)
+
+    def call(self, s_map, **kwargs):
+        data = s_map.data
+        data = self.norm(data).data * 2 - 1
+        return Map(data, s_map.meta)
 
 class NormalizeEditor(Editor):
 
@@ -233,7 +242,7 @@ class NanEditor(Editor):
 
 
 class KSOPrepEditor(Editor):
-    def __init__(self, add_rotation=False):
+    def __init__(self, add_rotation=True):
         self.add_rotation = add_rotation
 
         super().__init__()
@@ -321,13 +330,12 @@ class NormalizeExposureEditor(Editor):
 
 
 class NormalizeRadiusEditor(Editor):
-    def __init__(self, resolution, padding_factor=0.1, crop=True, rotate_north_up=True, fix_irradiance_with_distance=False, \
-                 scale_irradiance_to_1AU=False, **kwargs):
+    def __init__(self, resolution, padding_factor=0.1, crop=True,
+                 fix_irradiance_with_distance=False, rotate_north_up=True, **kwargs):
         self.padding_factor = padding_factor
         self.resolution = resolution
         self.crop = crop
         self.fix_irradiance_with_distance = fix_irradiance_with_distance
-        self.scale_irradiance_to_1AU = scale_irradiance_to_1AU
         self.rotate_north_up = rotate_north_up
         super(NormalizeRadiusEditor, self).__init__(**kwargs)
 
@@ -337,7 +345,7 @@ class NormalizeRadiusEditor(Editor):
         original_map = s_map
 
         r_obs_pix = s_map.rsun_obs / s_map.scale[0]  # Get the solar radius in pixels
-        r_obs_pix = (1 + self.padding_factor) * r_obs_pix  # Get the size in pixels of the padded radius
+        r_obs_pix = (1 + self.padding_factor) * r_obs_pix  # Get the size in pixels of the padded radius 
         scale_factor = self.resolution / (2 * r_obs_pix.value)
         s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
         if self.rotate_north_up:
@@ -354,17 +362,24 @@ class NormalizeRadiusEditor(Editor):
             s_map = s_map.submap(bottom_left=[pad_x // 2, pad_y // 2] * u.pix,
                                  top_right=[pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
 
+        # pad with zeros if the map is too small
+        if s_map.data.shape[0] < self.resolution or s_map.data.shape[1] < self.resolution:
+            data = s_map.data
+            new_data = np.zeros((self.resolution, self.resolution))
+            padding_x = (self.resolution - data.shape[0]) // 2
+            padding_y = (self.resolution - data.shape[1]) // 2
+            new_data[padding_x:padding_x + data.shape[0], padding_y:padding_y + data.shape[1]] = data
+            s_map = Map(new_data, s_map.meta)
+
         s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
 
         # Virtually move the instrument such that the sun occupies the expected
         # size in the current optics
         if self.fix_irradiance_with_distance:
             # preserve total intensity at 1 AU
-            s_map.data[:] = s_map.data * (original_map.data.sum() / s_map.data.sum()) * (
-                        original_map.dsun.to_value(u.AU) / 1) ** 2
+            s_map.data[:] = s_map.data * (original_map.data.sum() / s_map.data.sum()) * (original_map.dsun.to_value(u.AU) / 1)**2
             # set radius to 1 AU
             s_map.meta['dsun_obs'] = (1 * u.AU).to_value(u.m)
-
         return s_map
 
 

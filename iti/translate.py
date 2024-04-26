@@ -1,4 +1,3 @@
-
 import os
 from contextlib import closing
 from multiprocessing.pool import Pool
@@ -13,8 +12,9 @@ from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
 from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset, \
-    SWAPDataset
-from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
+    HinodeDataset
+from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor, LoadMapEditor, ScaleEditor, \
+    NormalizeExposureEditor, MapToDataEditor
 
 
 class InstrumentToInstrument:
@@ -32,6 +32,10 @@ class InstrumentToInstrument:
         self.generator.eval()
         self.device = device
         self.n_workers = n_workers
+
+    def forward(self, tensor):
+        with torch.no_grad():
+            return self.generator(tensor.to(self.device)).detach().cpu().numpy()
 
     def translate(self, *args, **kwargs):
         raise NotImplementedError()
@@ -141,19 +145,6 @@ class InstrumentToInstrument:
         return new_meta
 
 
-class InstrumentConverter:
-
-    def _convertDataset(self, *datasets, n_workers=4) -> Tuple[np.ndarray, List]:
-        images = []
-        metas = []
-        with Pool(n_workers) as pool:
-            for data_sample in zip(*[pool.imap(ds.convertData, ds.data) for ds in datasets]):
-                #
-                images += [d for d, kwargs in data_sample]
-                metas += [kwargs for d, kwargs in data_sample]
-        return np.concatenate(images), metas
-
-
 class SOHOToSDO(InstrumentToInstrument):
 
     def __init__(self, model_name='soho_to_sdo_v0_2.pt', **kwargs):
@@ -257,7 +248,7 @@ class KSOLowToHigh(InstrumentToInstrument):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
-    def translate(self, paths, return_arrays=False, **kwargs):
+    def translate(self, paths, return_arrays=True, **kwargs):
         ds = KSOFlatDataset(paths, self.resolution, **kwargs)
         for result, inputs, outputs in self._translateDataset(ds):
             if return_arrays:
@@ -291,16 +282,6 @@ class HMIToHinode(InstrumentToInstrument):
             s_map = Map(norm.inverse((s_map.data + 1) / 2), s_map.meta)
             yield s_map
 
-
-class KSOFlatConverter(InstrumentConverter):
-
-    def __init__(self, resolution, **kwargs):
-        super().__init__(**kwargs)
-        self.resolution = resolution
-
-    def convert(self, paths):
-        ds = KSOFlatDataset(paths, self.resolution)
-        return self._convertDataset(ds)
 
 class SWAPToAIA(InstrumentToInstrument):
 

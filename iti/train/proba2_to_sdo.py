@@ -18,7 +18,8 @@ from lightning.pytorch.loggers import WandbLogger
 from sunpy.visualization.colormaps import cm
 
 from iti.callback import SaveCallback, PlotBAB, PlotABA
-from iti.data.dataset import AIADataset, StorageDataset, Proba2Dataset, ITIDataModule
+from iti.data.dataset import AIADataset, StorageDataset, Proba2Dataset
+from iti.data.data_module import ITIDataModule
 from iti.data.editor import RandomPatchEditor, BrightestPixelPatchEditor
 from iti.iti import ITIModule
 

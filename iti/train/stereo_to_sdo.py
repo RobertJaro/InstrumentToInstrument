@@ -9,7 +9,8 @@ from lightning.pytorch.loggers import WandbLogger
 from sunpy.visualization.colormaps import cm
 
 from iti.callback import SaveCallback, PlotBAB, PlotABA
-from iti.data.dataset import SDODataset, StorageDataset, STEREODataset, ITIDataModule
+from iti.data.dataset import SDODataset, StorageDataset, STEREODataset
+from iti.data.data_module import ITIDataModule
 from iti.data.editor import RandomPatchEditor, SliceEditor, BrightestPixelPatchEditor
 from iti.iti import ITIModule
 
@@ -69,11 +70,7 @@ plot_settings_B = [
 ]
 
 # setup logging
-logging_config = config['logging']
-wandb_id = logging_config['wandb_id'] if 'wandb_id' in logging_config else None
-log_model = logging_config['wandb_log_model'] if 'wandb_log_model' in logging_config else False
-wandb_logger = WandbLogger(project=logging_config['wandb_project'], name=logging_config['wandb_name'], offline=False,
-                           entity=logging_config['wandb_entity'], id=wandb_id, dir=config['base_dir'], log_model=log_model)
+wandb_logger = WandbLogger(**config['logging'], dir=config['base_dir'])
 wandb_logger.experiment.config.update(config, allow_val_change=True)
 
 # Start training

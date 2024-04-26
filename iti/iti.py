@@ -109,17 +109,24 @@ class ITIModule(LightningModule):
         return gen_opt, dis_opt
 
     def training_step(self, batch):
-        if self.global_step > 200000:  # fix running stats
+        if self.global_step > 100000:  # fix running stats
             self.gen_ab.eval()
             self.gen_ba.eval()
         x_a, x_b = batch['dis_A'], batch['dis_B']
+        if torch.any(torch.std(x_a, dim=(2, 3)) == 0) or torch.any(torch.std(x_b, dim=(2, 3)) == 0):
+            print('Skip invalid batch')
         disc_loss_dict = self.discriminator_update(x_a, x_b)
         #
         x_a, x_b = batch['gen_A'], batch['gen_B']
+        if torch.any(torch.std(x_a, dim=(2, 3)) == 0) or torch.any(torch.std(x_b, dim=(2, 3)) == 0):
+            print('Skip invalid batch')
         train_loss_dict = self.generator_update(x_a, x_b)
 
+        loss_dict = {**disc_loss_dict, **train_loss_dict}
+        for k, v in loss_dict.items():
+            assert not torch.isnan(v), f'Loss {k} is NaN'
 
-        self.log_dict({**disc_loss_dict, **train_loss_dict})
+        self.log_dict(loss_dict)
 
 
     def validation_step(self, batch, batch_nb, dataloader_idx):
@@ -145,15 +152,11 @@ class ITIModule(LightningModule):
             # Noise loss
             valid_loss_gen_aba_noise = self.recon_criterion(n_aba, n_a)
 
-            self.valid_loss_gen_a_translate.append(valid_loss_gen_a_translate)
-            self.valid_loss_gen_adv_b.append(valid_loss_gen_adv_b)
-            self.valid_loss_dis_a.append(valid_loss_dis_a)
+            self.valid_loss_gen_a_translate.append(valid_loss_gen_a_translate.detach().cpu())
+            self.valid_loss_gen_adv_b.append(valid_loss_gen_adv_b.detach().cpu())
+            self.valid_loss_dis_a.append(valid_loss_dis_a.detach().cpu())
 
             valid_loss_gen_a_identity_noise = self.recon_criterion(n_a_identity, n_a)
-
-            return {'valid_loss_gen_a_translate': valid_loss_gen_a_translate,
-                    'valid_loss_gen_adv_b': valid_loss_gen_adv_b,
-                    'valid_loss_dis_a': valid_loss_dis_a,}
 
 
         elif dataloader_idx == 1:
@@ -169,13 +172,9 @@ class ITIModule(LightningModule):
             valid_loss_gen_b_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_bab))
             valid_loss_gen_b_identity_content = torch.mean(self.dis_b.calc_content_loss(x_b, x_b_identity))
 
-            self.valid_loss_gen_b_translate.append(valid_loss_gen_b_translate)
-            self.valid_loss_gen_adv_a.append(valid_loss_gen_adv_a)
-            self.valid_loss_dis_b.append(valid_loss_dis_b)
-
-            return {'valid_loss_gen_b_translate': valid_loss_gen_b_translate,
-                    'valid_loss_gen_adv_a': valid_loss_gen_adv_a,
-                    'valid_loss_dis_b': valid_loss_dis_b, }
+            self.valid_loss_gen_b_translate.append(valid_loss_gen_b_translate.detach().cpu())
+            self.valid_loss_gen_adv_a.append(valid_loss_gen_adv_a.detach().cpu())
+            self.valid_loss_dis_b.append(valid_loss_dis_b.detach().cpu())
 
         else:
             raise NotImplementedError('Validation data loader not supported!')
