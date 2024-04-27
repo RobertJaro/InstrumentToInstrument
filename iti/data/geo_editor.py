@@ -4,15 +4,34 @@ import numpy as np
 from iti.data.editor import Editor
 from iti.data.geo_utils import convert_units
 
-# Editors that already exist (but not for dictionaries)
-# - NormalizeEditor / ImageNormalizeEditor]
-
-# TODO: Check if this is still needed
 class BandOrderEditor(Editor):
-    def call(self, data, **kwargs):
-        raise NotImplementedError
+    """
+    Reorders bands in data dictionary.
+    """
 
-# TODO: Allow selecting by band name, rather than center wvl?
+    def __init__(self, target_order, key="data"):
+        """
+        Args:
+            target_order (list): Order of bands
+            key (str): Key in dictionary to apply transformation
+        """
+        self.target_order = target_order
+        self.key = key
+
+    def call(self, data_dict, **kwargs):
+        source_order = data_dict["wavelengths"]
+        assert len(source_order) == len(self.target_order), "Length of source and target wavelengths must match."
+        # Get indexes of bands to select
+        indexes = [np.where(source_order == wvl)[0][0] for wvl in self.target_order]
+        # Extract data
+        data = data_dict[self.key]
+        # Subselect bands
+        data = data[indexes]
+        # Update dictionary
+        data_dict[self.key] = data
+        data_dict["wavelengths"] = np.array(self.target_order)
+        return data_dict
+
 class BandSelectionEditor(Editor):
     """
     Selects a subset of available bands from data dictionary
