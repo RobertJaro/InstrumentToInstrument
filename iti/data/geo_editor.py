@@ -74,11 +74,10 @@ class NanMaskEditor(Editor):
         data_dict["nan_mask"] = mask
         return data_dict
 
-# NOTE: Already exists in ITI repo for numpy arrays
-# NOTE: Can also be used to replace NaN values for coordinates to remove off limb data
 class NanDictEditor(Editor):
     """
-    Removes NaN values from data dictionary
+    Removes NaN values from data dictionary.
+    Can also be used to replace NaN values of coordinates to remove off limb data.
     """
     def __init__(self, key="data", fill_value=0):
         self.key = key
