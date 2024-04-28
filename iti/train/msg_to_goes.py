@@ -14,6 +14,7 @@ collections.MutableMapping = collections.abc.MutableMapping
 #Now import hyper
 import torch
 import yaml
+import wandb
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
@@ -104,9 +105,17 @@ goes_valid = GeoDataset(
 data_module = ITIDataModule(msg_dataset, goes_dataset, msg_valid, goes_valid, **config['data'])
 
 # setup logging
+
 logging_config = config['logging']
 wandb_id = logging_config['wandb_id'] if 'wandb_id' in logging_config else None
 log_model = logging_config['wandb_log_model'] if 'wandb_log_model' in logging_config else False
+
+# Initialize wandb
+run = wandb.init(project=logging_config['wandb_project'], 
+                 name=logging_config['wandb_name'], 
+                 entity=logging_config['wandb_entity'], 
+                 id=wandb_id, 
+                 dir=config['base_dir'])
 wandb_logger = WandbLogger(project=logging_config['wandb_project'], name=logging_config['wandb_name'], offline=False,
                            entity=logging_config['wandb_entity'], id=wandb_id, dir=config['base_dir'], log_model=log_model)
 # wandb_logger.experiment.config.update(config, allow_val_change=True)
@@ -122,8 +131,8 @@ save_callback = SaveCallback(base_dir)
 #prediction_dir = os.path.join(base_dir, 'prediction')
 #os.makedirs(prediction_dir, exist_ok=True)
 plot_callbacks = []
-# plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
-# plot_callbacks += [PlotABA(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
+plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
+plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
 
 n_gpus = torch.cuda.device_count()
 n_cpus = os.cpu_count()
