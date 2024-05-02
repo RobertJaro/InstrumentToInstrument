@@ -537,7 +537,7 @@ class HRIDataset(BaseDataset):
 
 
 
-class Proba2Dataset(BaseDataset):
+class SWAPDataset(BaseDataset):
     def __init__(self, data, wavelength=174, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
         norm = swap_norm[wavelength]
 
