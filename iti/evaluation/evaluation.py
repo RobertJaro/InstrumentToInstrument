@@ -111,3 +111,10 @@ def plotImageComparison(original, ground_truth, iti, original_norm, ground_truth
     axs[2].set_title('ITI', fontsize=70)
     plt.savefig(os.path.join(path)+f'ImageComparison_{name}.jpg') if path & name is not None else plt.show()
     plt.close()
+
+
+################################### Save to FITS ##################################
+
+def saveToFITS(maps, path):
+    for i, m in tqdm(enumerate(maps)):
+        m.save(path+maps[i].meta['date-obs']+'.fits')
