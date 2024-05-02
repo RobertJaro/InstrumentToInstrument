@@ -9,7 +9,7 @@ import drms
 import numpy as np
 import pandas as pd
 from astropy.io import fits
-from sunpy.io.fits import header_to_fits
+from sunpy.io._fits import header_to_fits
 from sunpy.util import MetaDict
 
 
