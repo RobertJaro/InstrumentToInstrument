@@ -21,7 +21,7 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, AddRadialDistanceEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor, PaddingEditor, proba2_norm, hri_norm, swap_norm, SWAPPrepEditor
+    SOHOFixHeaderEditor, PaddingEditor, hri_norm, proba2_norm, SWAPPrepEditor
 
 
 class ITIDataModule(LightningDataModule):
