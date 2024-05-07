@@ -305,7 +305,7 @@ class KSOFlatConverter(InstrumentConverter):
 
 class SWAPToAIA(InstrumentToInstrument):
 
-    def __init__(self, model_name='swap_to_aia_v0_1.pt', **kwargs):
+    def __init__(self, model_name='swap_to_aia_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
     def translate(self, paths):
