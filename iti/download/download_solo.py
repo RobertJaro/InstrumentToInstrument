@@ -79,7 +79,7 @@ class SOLODownloader:
         if os.path.exists(file_path):
             return file_path
         #
-        search = Fido.search(a.Time(query_date - timedelta(seconds=12), query_date + timedelta(seconds=12)),
+        search = Fido.search(a.Time(query_date - timedelta(hours=1), query_date + timedelta(hours=1)),
                              a.Instrument('EUI'), a.soar.Product(wl), a.Level(2))
         assert search.file_num > 0, "No data found for %s (%s)" % (query_date.isoformat(), wl)
         search = sorted(search['soar'], key=lambda x: abs(pd.to_datetime(x['Start time']) - query_date).total_seconds())
@@ -101,28 +101,21 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Download Solar Orbiter data')
     parser.add_argument('--download_dir', type=str, help='path to the download directory.')
     parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
+    parser.add_argument('--start_date', type=str, help='start date in format YYYY-MM-DD.')
+    parser.add_argument('--end_date', type=str, help='end date in format YYYY-MM-DD.', required=False,
+                        default=str(datetime.now()).split(' ')[0])
 
     args = parser.parse_args()
     base_path = args.download_dir
     n_workers = args.n_workers
-    #base_path = '/Users/christophschirninger/PycharmProjects/MDRAIT_ITI/'
+    start_date = args.start_date
+    end_date = args.end_date
 
-    #[os.makedirs(os.path.join(base_path, str(c)), exist_ok=True) for c in ['hri_174', 'fsi_174', 'fsi_304']]
+    start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+
     download_util = SOLODownloader(base_path=base_path)
-    start_date = datetime(2023, 11, 1, 0, 40)
-    #end_date = datetime.now()
-    end_date = datetime(2023, 11, 2, 0, 0)
-    #num_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-    #month_dates = [start_date + i * relativedelta(months=1) for i in range(num_months)]
-    # make weeks_dates
-    #num_weeks = (end_date - start_date).days // 7
-    #weeks_dates = [start_date + i * timedelta(days=7) for i in range(num_weeks)]
-    #num_days = (end_date - start_date).days
-    #days_dates = [start_date + i * timedelta(days=1) for i in range(num_days)]
-    # make hours_dates
-    #num_hours = (end_date - start_date).days * 24
-    #hours_dates = [start_date + i * timedelta(hours=1) for i in range(num_hours)]
 
-    for d in [start_date + i * timedelta(seconds=12) for i in
-              range((end_date - start_date) // timedelta(seconds=12))]:
+    for d in [start_date_datetime + i * timedelta(hours=1) for i in
+              range((end_date_datetime - start_date_datetime) // timedelta(hours=1))]:
         download_util.downloadDate(d)
