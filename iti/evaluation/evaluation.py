@@ -32,7 +32,7 @@ def getAIAdata(f, resolution=2048):
     #data, _ = MapToDataEditor().call(s_map)
     return s_map
 
-def getFSIdata(f, degradation):
+def getFSIdata(f):
     s_map, _ = LoadMapEditor().call(f)
     s_map = NormalizeRadiusEditor(resolution=1024, fix_irradiance_with_distance=True).call(s_map)
     return s_map
