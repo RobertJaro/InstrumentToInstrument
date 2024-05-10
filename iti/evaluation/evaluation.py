@@ -39,7 +39,7 @@ def getFSIdata(f):
 
 def getHRIdata(f, resolution=4096):
     s_map, _ = LoadMapEditor().call(f)
-    s_map = NormalizeRadiusEditor(resolution=resolution).call(s_map)
+    s_map = NormalizeRadiusEditor(resolution=resolution, rotate_north_up=False).call(s_map)
     return s_map
 
 
