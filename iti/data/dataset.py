@@ -498,14 +498,14 @@ class ZerosDataset(Dataset):
 class EUIDataset(StackDataset):
 
     def __init__(self, data, patch_shape=None, wavelengths=None, resolution=1024, ext='.fits', **kwargs):
-        wavelengths = [174, 304] if wavelengths is None else wavelengths
+        wavelengths = ['eui-fsi174-image', 'eui-fsi304-image'] if wavelengths is None else wavelengths
         if isinstance(data, list):
             paths = data
         else:
             paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
-        ds_mapping = {174: FSIDataset, 304: FSIDataset}
-        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
-                     for wl_id, files in zip(wavelengths, paths)]
+        ds = {'eui-fsi174-image': FSIDataset, 'eui-fsi304-image': FSIDataset}
+        data_sets = [ds[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+                         for wl_id, files in zip(wavelengths, paths)]
 
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
@@ -513,7 +513,7 @@ class EUIDataset(StackDataset):
 
 
 class FSIDataset(BaseDataset):
-    def __init__(self, data, wavelength=304, resolution=1024, ext='.fits', **kwargs):
+    def __init__(self, data, wavelength, resolution=1024, ext='.fits', **kwargs):
         norm = solo_norm[wavelength]
 
         editors = [LoadMapEditor(),
