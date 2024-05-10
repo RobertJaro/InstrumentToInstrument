@@ -22,7 +22,6 @@ warnings.filterwarnings('ignore')
 
 def getSWAPdata(f):
     s_map, _ = LoadMapEditor().call(f)
-    s_map = SWAPPrepEditor(degradation=[-3.37591548e-05, 1.50555178e+00]).call(s_map)
     s_map = NormalizeRadiusEditor(resolution=1024).call(s_map)
     return s_map
 
