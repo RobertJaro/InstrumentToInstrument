@@ -74,7 +74,7 @@ if __name__ == '__main__':
     parser.add_argument('--download_dir', type=str, help='path to the download directory.')
     parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
     parser.add_argument('--start_date', type=str, help='start date in format YYYY-MM-DD.')
-    parser.add_argument('--end_date', type=str, help='end date in format YYYY-MM-DD.', required=False, default=datetime.now())
+    parser.add_argument('--end_date', type=str, help='end date in format YYYY-MM-DD.', required=False, default=str(datetime.now()).split(' ')[0])
 
     args = parser.parse_args()
     base_path = args.download_dir
