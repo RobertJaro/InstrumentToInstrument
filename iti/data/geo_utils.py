@@ -7,6 +7,11 @@ import glob, os
 import numpy as np
 import pandas as pd
 
+
+import xarray as xr
+from functools import partial
+
+
 def split_train_val(files: List, split_spec: DictConfig) -> Tuple[List, List]:
     """
     Split files into training and validation sets based on dataset specification.
@@ -146,5 +151,46 @@ def convert_units(data: np.array, wavelengths: np.array) -> np.array:
         corrected_data.append(corr_data)
     return np.stack(corrected_data, axis=0)
 
+
+
+
+
+
+def spatial_mean(ds: xr.Dataset, spatial_variables: List[str]) -> xr.Dataset:
+    return ds.mean(spatial_variables)
+
+
+def normalize(
+        files: List[str],
+        temporal_variables: List[str]=["time"], 
+        spatial_variables: List[str]=["x","y"], 
+) -> xr.Dataset:
+    
+    preprocess = partial(spatial_mean, spatial_variables=spatial_variables)
+
+    # calculate mean
+    ds_mean = xr.open_mfdataset(files, preprocess=preprocess, combine="by_coords",  engine="netcdf4")
+
+    ds_mean = ds_mean.mean(temporal_variables)
+
+    def preprocess(ds: xr.Dataset):
+        # calculate the std
+        N = ds.x.size * ds.y.size
+        ds = np.sqrt(((ds - ds_mean) ** 2).sum(['x','y']) / N)
+        return ds
+    
+    ds_std = xr.open_mfdataset(files, preprocess=preprocess, combine="by_coords",  engine="netcdf4")
+
+    ds_std = ds_std.mean(temporal_variables)
+
+    ds_mean = ds_mean.rename({'Rad':'mean'})
+    ds_std = ds_std.rename({'Rad':'std'})
+
+    # Drop any variables that are not used (e.g. DQF for GOES)
+    ds_mean = ds_mean.drop_vars([v for v in ds_mean.var() if v not in ['std', 'mean']])
+    ds_std = ds_std.drop_vars([v for v in ds_std.var() if v not in ['std', 'mean']])
+
+    ds = xr.combine_by_coords([ds_mean, ds_std])
+    return ds
 
 

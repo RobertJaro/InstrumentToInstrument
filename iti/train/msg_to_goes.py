@@ -22,6 +22,7 @@ from lightning.pytorch.loggers import WandbLogger
 
 from iti.data.geo_datasets import GeoDataset
 from iti.data.geo_editor import NanMaskEditor, CoordNormEditor, NanDictEditor, RadUnitEditor, ToTensorEditor, StackDictEditor
+from iti.data.geo_utils import get_split, get_list_filenames, normalize
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -32,7 +33,7 @@ from iti.iti import ITIModule
 
 parser = argparse.ArgumentParser(description='Train MSG to GOES translations')
 parser.add_argument('--config', 
-                    default="/home/anna.jungbluth/InstrumentToInstrument/config/msg_to_goes.yaml",
+                    default="/home/freischem/InstrumentToInstrument/config/msg_to_goes.yaml",
                     type=str, 
                     help='path to the config file.')
 
@@ -52,10 +53,33 @@ data_config = config['data']
 msg_path = data_config['A_path']
 goes_path = data_config['B_path']
 
+# splits_dict = { 
+#     "train": {"years": None, "months": None, "days": None},
+#     "val": {"years": None, "months": None, "days": None},
+# }
+
 splits_dict = { 
-    "train": {"years": None, "months": None, "days": None},
-    "val": {"years": None, "months": None, "days": None},
+    "train": {"years": [2020], "months": [10], "days": list(range(1,20))},
+    "val": {"years": [2020], "months": [10], "days": list(range(20,32))},
 }
+
+# TODO: Add data normalization!!!
+# TODO remove satellite specific naming for hydra
+# get list of files in training set
+goes_filenames = get_list_filenames(goes_path, ext='nc')
+msg_filenames = get_list_filenames(msg_path, ext='nc')
+
+goes_training_filenames = get_split(goes_filenames, splits_dict['train'])
+msg_training_filenames = get_split(msg_filenames, splits_dict['train'])
+
+# compute mean and std for list of training files
+goes_norm = normalize(goes_training_filenames)
+msg_norm = normalize(msg_training_filenames)
+
+# pass mean and std to Normalisation editor
+
+
+# TODO: add band selection for miniset experiment
 
 editors = [
     # BandSelectionEditor(target_bands=[0.47, 13.27]),
@@ -64,12 +88,18 @@ editors = [
     NanDictEditor(key="data", fill_value=0), # Replaces NaNs in data
     # NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
     # NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
-    RadUnitEditor(key="data"),
+    # RadUnitEditor(key="data"), TODO take into account for normalization if needed
+    # TODO Normalization?
     StackDictEditor(),
     ToTensorEditor(),
 ]
 
-# TODO: Add data normalization!!!
+"""
+1. unit conversion
+2. normalisation
+"""
+
+
 
 msg_dataset = GeoDataset(
     data_dir=msg_path,
@@ -136,9 +166,10 @@ plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=None, pl
 
 n_gpus = torch.cuda.device_count()
 n_cpus = os.cpu_count()
+
 trainer = Trainer(
     max_epochs=int(config['training']['epochs']),
-    fast_dev_run=True,
+    fast_dev_run=False,
     logger=wandb_logger,
     devices=n_gpus if n_gpus > 0 else n_cpus,
     accelerator="gpu" if n_gpus >= 1 else "cpu",

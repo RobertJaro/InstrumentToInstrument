@@ -1,8 +1,8 @@
-base_dir: /home/anna.jungbluth/data
+base_dir: /mnt/disks/data/miniset
 data:
-  A_path: /home/anna.jungbluth/data/msg/analysis
+  A_path: /mnt/disks/data/miniset/msg/geoprocessed
   # converted_A_path:
-  B_path: /home/anna.jungbluth/data/goes16/analysis
+  B_path: /mnt/disks/data/miniset/goes16/geoprocessed
   # converted_B_path: 
   num_workers: 1
   iterations_per_epoch: 1000
@@ -15,9 +15,13 @@ model:
   norm: 'none'
   use_batch_statistic: False
 logging:
-  wandb_entity: annajungbluth
-  wandb_project: ITI
+  # wandb_entity: annajungbluth
+  # wandb_project: ITI
+  # wandb_name: MSG-to-GOES
+  # wandb_id: null
+  wandb_entity: lilli-freischem
+  wandb_project: msg-goes-miniset
   wandb_name: MSG-to-GOES
   wandb_id: null
 training:
-  epochs: 1
+  epochs: 10
