@@ -348,7 +348,7 @@ class FSIToAIA(InstrumentToInstrument):
         return new_meta
 
 
-class AIAtoHRI(InstrumentToInstrument):
+class AIAToHRI(InstrumentToInstrument):
 
     def __init__(self, model_name='aia_to_hri_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
