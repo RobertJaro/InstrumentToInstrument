@@ -21,7 +21,8 @@ from lightning.pytorch.loggers import WandbLogger
 #from lightning.pytorch.strategies import DataParallelStrategy
 
 from iti.data.geo_datasets import GeoDataset
-from iti.data.geo_editor import NanMaskEditor, CoordNormEditor, NanDictEditor, RadUnitEditor, ToTensorEditor, StackDictEditor
+from iti.data.geo_editor import BandSelectionEditor, NanMaskEditor, CoordNormEditor, NanDictEditor, RadUnitEditor, ToTensorEditor, StackDictEditor, MeanStdNormEditor
+from iti.data.editor import RandomPatchEditor
 from iti.data.geo_utils import get_split, get_list_filenames, normalize
 
 import warnings
@@ -30,6 +31,12 @@ warnings.filterwarnings('ignore')
 from iti.callback import SaveCallback, PlotBAB, PlotABA
 from iti.data.dataset import ITIDataModule
 from iti.iti import ITIModule
+
+from datetime import datetime
+
+from loguru import logger
+
+
 
 parser = argparse.ArgumentParser(description='Train MSG to GOES translations')
 parser.add_argument('--config', 
@@ -45,26 +52,24 @@ with open(args.config, "r") as stream:
     except yaml.YAMLError as exc:
         print(exc)
 
+# Create timestamped directory within base_dir where normalisation, checkpoints (and prediction) are saved
 base_dir = config['base_dir']
-os.makedirs(base_dir, exist_ok=True)
+time_str = datetime.now().strftime("%Y%m%d-%H%M")
+save_dir = os.path.join(base_dir, time_str)
+os.makedirs(save_dir, exist_ok=True)
 
 # Init Dataset
 data_config = config['data']
 msg_path = data_config['A_path']
 goes_path = data_config['B_path']
 
-# splits_dict = { 
-#     "train": {"years": None, "months": None, "days": None},
-#     "val": {"years": None, "months": None, "days": None},
-# }
 
 splits_dict = { 
     "train": {"years": [2020], "months": [10], "days": list(range(1,20))},
     "val": {"years": [2020], "months": [10], "days": list(range(20,32))},
 }
 
-# TODO: Add data normalization!!!
-# TODO remove satellite specific naming for hydra
+
 # get list of files in training set
 goes_filenames = get_list_filenames(goes_path, ext='nc')
 msg_filenames = get_list_filenames(msg_path, ext='nc')
@@ -76,41 +81,56 @@ msg_training_filenames = get_split(msg_filenames, splits_dict['train'])
 goes_norm = normalize(goes_training_filenames)
 msg_norm = normalize(msg_training_filenames)
 
-# pass mean and std to Normalisation editor
+# save normalisations to file
+norm_dir = os.path.join(save_dir, 'normalization')
+os.makedirs(norm_dir, exist_ok=True)
+goes_norm.to_netcdf(os.path.join(norm_dir, 'goes_norm.nc'))
+msg_norm.to_netcdf(os.path.join(norm_dir, 'msg_norm.nc'))
+
+logger.info(f"Computed and saved means and stds for normalization in {norm_dir}")
 
 
-# TODO: add band selection for miniset experiment
-
-editors = [
-    # BandSelectionEditor(target_bands=[0.47, 13.27]),
+goes_editors = [
+    BandSelectionEditor(target_bands=[0.64, 3.89, 7.34, 9.61, 13.27]),
     # NanMaskEditor(key="data"), # Attaches nan_mask to the data dict
     # CoordNormEditor(key="coords"), # Normalizes lats/lons to [-1, 1]
     NanDictEditor(key="data", fill_value=0), # Replaces NaNs in data
     # NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
     # NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
     # RadUnitEditor(key="data"), TODO take into account for normalization if needed
-    # TODO Normalization?
+    MeanStdNormEditor(norm_ds=goes_norm, key="data"),
     StackDictEditor(),
     ToTensorEditor(),
+    RandomPatchEditor(patch_shape=(256, 256)),
 ]
 
-"""
-1. unit conversion
-2. normalisation
-"""
+msg_editors = [
+    BandSelectionEditor(target_bands=[0.64, 3.92, 7.35, 9.66, 13.4]),
+    # NanMaskEditor(key="data"), # Attaches nan_mask to the data dict
+    # CoordNormEditor(key="coords"), # Normalizes lats/lons to [-1, 1]
+    NanDictEditor(key="data", fill_value=0), # Replaces NaNs in data
+    # NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
+    # NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
+    # RadUnitEditor(key="data"), TODO take into account for normalization if needed
+    MeanStdNormEditor(norm_ds=msg_norm, key="data"),
+    StackDictEditor(),
+    ToTensorEditor(),
+    RandomPatchEditor(patch_shape=(256, 256)),
+]
 
-
+logger.info(f"Instantiating datasets.")
 
 msg_dataset = GeoDataset(
     data_dir=msg_path,
-    editors=editors,
+    editors=msg_editors,
     splits_dict=splits_dict['train'],
     load_coords=False,
     load_cloudmask=False,
 )
+
 msg_valid = GeoDataset(
     data_dir=msg_path,
-    editors=editors,
+    editors=msg_editors,
     splits_dict=splits_dict['val'],
     load_coords=False,
     load_cloudmask=False,
@@ -118,7 +138,7 @@ msg_valid = GeoDataset(
 
 goes_dataset = GeoDataset(
     data_dir=goes_path,
-    editors=editors,
+    editors=goes_editors,
     splits_dict=splits_dict['train'],
     load_coords=False,
     load_cloudmask=False,
@@ -126,7 +146,7 @@ goes_dataset = GeoDataset(
 
 goes_valid = GeoDataset(
     data_dir=goes_path,
-    editors=editors,
+    editors=goes_editors,
     splits_dict=splits_dict['val'],
     load_coords=False,
     load_cloudmask=False,
@@ -135,6 +155,9 @@ goes_valid = GeoDataset(
 data_module = ITIDataModule(msg_dataset, goes_dataset, msg_valid, goes_valid, **config['data'])
 
 # setup logging
+
+logger.info(f"Setting up WandB logging.")
+
 
 logging_config = config['logging']
 wandb_id = logging_config['wandb_id'] if 'wandb_id' in logging_config else None
@@ -145,22 +168,32 @@ run = wandb.init(project=logging_config['wandb_project'],
                  name=logging_config['wandb_name'], 
                  entity=logging_config['wandb_entity'], 
                  id=wandb_id, 
-                 dir=config['base_dir'])
+                 dir=save_dir)
 wandb_logger = WandbLogger(project=logging_config['wandb_project'], name=logging_config['wandb_name'], offline=False,
-                           entity=logging_config['wandb_entity'], id=wandb_id, dir=config['base_dir'], log_model=log_model)
+                           entity=logging_config['wandb_entity'], id=wandb_id, dir=save_dir, log_model=log_model)
 # wandb_logger.experiment.config.update(config, allow_val_change=True)
+
+
+logger.info(f"Starting training.")
 
 # Start training
 module = ITIModule(**config['model'])
 
 # setup save callbacks
-checkpoint_callback = ModelCheckpoint(dirpath=base_dir, save_last=True, every_n_epochs=1, save_weights_only=False)
-save_callback = SaveCallback(base_dir)
+checkpoint_dir = os.path.join(save_dir, 'checkpoints')
+checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_dir, save_last=True, every_n_epochs=1, save_weights_only=False)
+save_callback = SaveCallback(checkpoint_dir)
 
 # setup plot callbacks
-#prediction_dir = os.path.join(base_dir, 'prediction')
+#prediction_dir = os.path.join(save_dir, 'prediction')
 #os.makedirs(prediction_dir, exist_ok=True)
 plot_callbacks = []
+
+
+plot_settings_A = {"cmap": "viridris", "title": "MSG", 'vmin': -1, 'vmax': 1}
+plot_settings_B = {"cmap": "viridris", "title": "GOES-16", 'vmin': -1, 'vmax': 1}
+
+
 plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
 plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
 

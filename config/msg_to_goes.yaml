@@ -1,4 +1,4 @@
-base_dir: /mnt/disks/data/miniset
+base_dir: /home/freischem/outputs/miniset/
 data:
   A_path: /mnt/disks/data/miniset/msg/geoprocessed
   # converted_A_path:
