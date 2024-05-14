@@ -11,7 +11,7 @@ collections.MutableMapping = collections.abc.MutableMapping
 
 from iti.translate import *
 from iti.data.editor import NormalizeRadiusEditor, AIAPrepEditor, NormalizeExposureEditor, MapToDataEditor, \
-    SWAPPrepEditor, LoadMapEditor, solo_norm
+    SWAPPrepEditor, LoadMapEditor, solo_norm, proba2_norm
 
 from matplotlib import pyplot as plt
 import warnings
