@@ -32,14 +32,16 @@ class SOLODownloader:
             self.dirs = ['eui-hrieuv174-image']
         [os. makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
-    def downloadDate(self, date):
+    def downloadDate(self, date, FSI=True):
         files = []
         try:
             # Download FSI
-            #for wl in self.wavelengths[1::]:
-            #    files += [self.downloadFSI(date, wl)]
-            for wl in self.wavelengths:
-                files += [self.downloadHRI(date, wl)]
+            if FSI:
+                for wl in self.wavelengths:
+                    files += [self.downloadFSI(date, wl)]
+            else:
+                for wl in self.wavelengths:
+                    files += [self.downloadHRI(date, wl)]
             logging.info('Download complete %s' % date.isoformat())
         except Exception as ex:
             logging.error('Unable to download %s: %s' % (date.isoformat(), str(ex)))
@@ -104,12 +106,14 @@ if __name__ == '__main__':
     parser.add_argument('--start_date', type=str, help='start date in format YYYY-MM-DD.')
     parser.add_argument('--end_date', type=str, help='end date in format YYYY-MM-DD.', required=False,
                         default=str(datetime.now()).split(' ')[0])
+    parser.add_argument('--FSI', type=bool, help='download FSI data.', required=False, default=True)
 
     args = parser.parse_args()
     base_path = args.download_dir
     n_workers = args.n_workers
     start_date = args.start_date
     end_date = args.end_date
+    FSI = args.FSI
 
     start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
     end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
@@ -118,4 +122,4 @@ if __name__ == '__main__':
 
     for d in [start_date_datetime + i * timedelta(hours=1) for i in
               range((end_date_datetime - start_date_datetime) // timedelta(hours=1))]:
-        download_util.downloadDate(d)
+        download_util.downloadDate(d, FSI=True)
