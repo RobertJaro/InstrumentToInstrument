@@ -10,6 +10,7 @@ collections.MutableSet = collections.abc.MutableSet
 collections.MutableMapping = collections.abc.MutableMapping
 
 from google.cloud.storage import Client, transfer_manager
+from google.cloud import storage
 
 from iti.translate import *
 from iti.data.editor import NormalizeRadiusEditor, AIAPrepEditor, NormalizeExposureEditor, MapToDataEditor, \
