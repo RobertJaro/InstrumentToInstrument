@@ -162,7 +162,7 @@ def download_gcp_bucket(bucket_name, destination_directory="", workers=8, max_re
     # too large to hold in memory easily.
     # max_results=1000
 
-    storage_client = Client()
+    storage_client = storage.Client.create_anonymous_client()
     bucket = storage_client.bucket(bucket_name)
     os.makedirs(destination_directory, exist_ok=True)
 
