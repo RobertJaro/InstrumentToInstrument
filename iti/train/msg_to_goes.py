@@ -36,6 +36,7 @@ from datetime import datetime
 
 from loguru import logger
 
+import xarray as xr
 
 
 parser = argparse.ArgumentParser(description='Train MSG to GOES translations')
@@ -69,25 +70,38 @@ splits_dict = {
     "val": {"years": [2020], "months": [10], "days": list(range(20,32))},
 }
 
+norm_config = config['normalization']
+norm_ok = False
+if 'norm_dir' in norm_config:
+    logger.info(f"Loading normalization datasets saved in: {norm_config['norm_dir']}")
+    try:
+        goes_norm = xr.open_dataset(os.path.join(norm_config['norm_dir'], 'goes_norm.nc'))
+        msg_norm = xr.open_dataset(os.path.join(norm_config['norm_dir'], 'msg_norm.nc'))
+        norm_ok = True
+    except:
+        logger.warning(f"Unable to load normalization datasets from: {norm_config['norm_dir']}")
 
-# get list of files in training set
-goes_filenames = get_list_filenames(goes_path, ext='nc')
-msg_filenames = get_list_filenames(msg_path, ext='nc')
+if not norm_ok:
+    logger.info(f"Computing  means and stds for normalization...")
 
-goes_training_filenames = get_split(goes_filenames, splits_dict['train'])
-msg_training_filenames = get_split(msg_filenames, splits_dict['train'])
+    # get list of files in training set
+    goes_filenames = get_list_filenames(goes_path, ext='nc')
+    msg_filenames = get_list_filenames(msg_path, ext='nc')
 
-# compute mean and std for list of training files
-goes_norm = normalize(goes_training_filenames)
-msg_norm = normalize(msg_training_filenames)
+    goes_training_filenames = get_split(goes_filenames, splits_dict['train'])
+    msg_training_filenames = get_split(msg_filenames, splits_dict['train'])
 
-# save normalisations to file
+    # compute mean and std for list of training files
+    goes_norm = normalize(goes_training_filenames)
+    msg_norm = normalize(msg_training_filenames)
+
+# save normalisations in current save directory
 norm_dir = os.path.join(save_dir, 'normalization')
 os.makedirs(norm_dir, exist_ok=True)
 goes_norm.to_netcdf(os.path.join(norm_dir, 'goes_norm.nc'))
 msg_norm.to_netcdf(os.path.join(norm_dir, 'msg_norm.nc'))
 
-logger.info(f"Computed and saved means and stds for normalization in {norm_dir}")
+logger.info(f"Saved means and stds for normalization in {norm_dir}...")
 
 
 goes_editors = [
@@ -156,7 +170,7 @@ data_module = ITIDataModule(msg_dataset, goes_dataset, msg_valid, goes_valid, **
 
 # setup logging
 
-logger.info(f"Setting up WandB logging.")
+logger.info(f"Setting up WandB logging...")
 
 
 logging_config = config['logging']
@@ -174,12 +188,13 @@ wandb_logger = WandbLogger(project=logging_config['wandb_project'], name=logging
 # wandb_logger.experiment.config.update(config, allow_val_change=True)
 
 
-logger.info(f"Starting training.")
+logger.info(f"Initializing training steps...")
 
 # Start training
 module = ITIModule(**config['model'])
 
 # setup save callbacks
+logger.info(f"Initializing callbacks...")
 checkpoint_dir = os.path.join(save_dir, 'checkpoints')
 checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_dir, save_last=True, every_n_epochs=1, save_weights_only=False)
 save_callback = SaveCallback(checkpoint_dir)
@@ -190,16 +205,17 @@ save_callback = SaveCallback(checkpoint_dir)
 plot_callbacks = []
 
 
-plot_settings_A = {"cmap": "viridris", "title": "MSG", 'vmin': -1, 'vmax': 1}
-plot_settings_B = {"cmap": "viridris", "title": "GOES-16", 'vmin': -1, 'vmax': 1}
+plot_settings_A = {"cmap": "viridris", "title": "MSG"} #, 'vmin': -1, 'vmax': 1}
+plot_settings_B = {"cmap": "viridris", "title": "GOES-16"} #, 'vmin': -1, 'vmax': 1}
 
 
-plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
-plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=None, plot_settings_B=None)]
+plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
+plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
 
 n_gpus = torch.cuda.device_count()
 n_cpus = os.cpu_count()
 
+logger.info(f"Initializing Trainer...")
 trainer = Trainer(
     max_epochs=int(config['training']['epochs']),
     fast_dev_run=False,
@@ -211,4 +227,6 @@ trainer = Trainer(
     callbacks=[checkpoint_callback, save_callback, *plot_callbacks],
 )
 
+logger.info(f"Starting training...")
 trainer.fit(module, data_module, ckpt_path='last')
+logger.info(f"Done...!")

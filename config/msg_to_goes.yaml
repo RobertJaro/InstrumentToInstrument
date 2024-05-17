@@ -19,9 +19,12 @@ logging:
   # wandb_project: ITI
   # wandb_name: MSG-to-GOES
   # wandb_id: null
-  wandb_entity: lilli-freischem
+  wandb_entity: iti-experiments
   wandb_project: msg-goes-miniset
-  wandb_name: MSG-to-GOES
+  wandb_name: first_normalised_training
   wandb_id: null
 training:
   epochs: 10
+normalization: 
+  # norm_dir: null
+  norm_dir: /home/freischem/outputs/miniset/20240517-0928/normalization/
