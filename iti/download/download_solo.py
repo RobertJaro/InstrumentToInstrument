@@ -21,31 +21,34 @@ from tqdm import tqdm
 
 class SOLODownloader:
 
-    def __init__(self, base_path, FSI=True):
+    def __init__(self, base_path):
         self.base_path = base_path
-        if FSI:
-            self.wavelengths = ['eui-fsi174-image', 'eui-fsi304-image']
-            self.dirs = ['eui-fsi174-image', 'eui-fsi304-image']
-        #self.wavelengths = ['eui-hrieuv174-image', 'eui-fsi174-image', 'eui-fsi304-image']
-        else:
-            self.wavelengths = ['eui-hrieuv174-image']
-            self.dirs = ['eui-hrieuv174-image']
+
+        self.wavelengths_fsi = ['eui-fsi174-image', 'eui-fsi304-image']
+        self.wavelengths_hri = ['eui-hrieuv174-image']
+        self.dirs = ['eui-fsi174-image', 'eui-fsi304-image']
         [os. makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
     def downloadDate(self, date, FSI=True):
         files = []
-        try:
-            # Download FSI
-            if FSI:
-                for wl in self.wavelengths:
+        if FSI:
+            try:
+                # Download FSI
+                for wl in self.wavelengths_fsi:
                     files += [self.downloadFSI(date, wl)]
-            else:
-                for wl in self.wavelengths:
+                logging.info('Download complete %s' % date.isoformat())
+            except Exception as ex:
+                logging.error('Unable to download %s: %s' % (date.isoformat(), str(ex)))
+                [os.remove(f) for f in files if os.path.exists(f)]
+        else:
+            try:
+                # Download HRI
+                for wl in self.wavelengths_hri:
                     files += [self.downloadHRI(date, wl)]
-            logging.info('Download complete %s' % date.isoformat())
-        except Exception as ex:
-            logging.error('Unable to download %s: %s' % (date.isoformat(), str(ex)))
-            [os.remove(f) for f in files if os.path.exists(f)]
+                logging.info('Download complete %s' % date.isoformat())
+            except Exception as ex:
+                    #logging.error('Unable to download %s: %s' % (date.isoformat(), str(ex)))
+                    [os.remove(f) for f in files if os.path.exists(f)]
 
 
     def downloadFSI(self, query_date, wl):
@@ -106,14 +109,12 @@ if __name__ == '__main__':
     parser.add_argument('--start_date', type=str, help='start date in format YYYY-MM-DD.')
     parser.add_argument('--end_date', type=str, help='end date in format YYYY-MM-DD.', required=False,
                         default=str(datetime.now()).split(' ')[0])
-    parser.add_argument('--FSI', type=bool, help='download FSI data.', required=False, default=True)
 
     args = parser.parse_args()
     base_path = args.download_dir
     n_workers = args.n_workers
     start_date = args.start_date
     end_date = args.end_date
-    FSI = args.FSI
 
     start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
     end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
@@ -122,4 +123,4 @@ if __name__ == '__main__':
 
     for d in [start_date_datetime + i * timedelta(hours=1) for i in
               range((end_date_datetime - start_date_datetime) // timedelta(hours=1))]:
-        download_util.downloadDate(d, FSI=True)
+        download_util.downloadDate(d)
