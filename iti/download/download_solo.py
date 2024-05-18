@@ -26,7 +26,7 @@ class SOLODownloader:
 
         self.wavelengths_fsi = ['eui-fsi174-image', 'eui-fsi304-image']
         self.wavelengths_hri = ['eui-hrieuv174-image']
-        self.dirs = ['eui-fsi174-image', 'eui-fsi304-image']
+        self.dirs = ['eui-fsi174-image', 'eui-fsi304-image', 'eui-hrieuv174-image']
         [os. makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
     def downloadDate(self, date, FSI=True):
