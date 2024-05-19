@@ -1,0 +1,9 @@
+model:
+  __target__: null
+  input_dim_a: 11
+  input_dim_b: 16
+  upsampling: 0
+  discriminator_mode: CHANNELS
+  lambda_diversity: 0
+  norm: 'none'
+  use_batch_statistic: False

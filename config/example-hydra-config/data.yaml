@@ -1,0 +1,54 @@
+A_data:
+  A_path: null
+  A_train_dataset:
+    _target_: iti.data.geo_datasets.GeoDataset # TODO: make specific msg dataset?
+    data_dir: null
+    editors: null # TODO: hard code in dataset?
+    splits_dict:
+      train:
+        years: [2020]
+        months: [10]
+        days: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    load_coords: False
+    load_cloudmask: False
+  A_val_dataset:
+    _target_: iti.data.geo_datasets.GeoDataset # TODO: make specific msg dataset?
+    data_dir: null
+    editors: null # TODO: hard code in dataset?
+    splits_dict:
+      train:
+        years: [2020]
+        months: [10]
+        days: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    load_coords: False
+    load_cloudmask: False 
+  A_plot_settings: null 
+
+B_data:
+  B_path: null
+  B_train_dataset:
+    _target_: iti.data.geo_datasets.GeoDataset # TODO: make specific goes dataset?
+    data_dir: null
+    editors: null # TODO: hard code in dataset?
+    splits_dict:
+      train:
+        years: [2020]
+        months: [10]
+        days: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    load_coords: False
+    load_cloudmask: False
+  B_val_dataset:
+    _target_: iti.data.geo_datasets.GeoDataset # TODO: make specific goes dataset?
+    data_dir: null
+    editors: null # TODO: hard code in dataset?
+    splits_dict:
+      train:
+        years: [2020]
+        months: [10]
+        days: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    load_coords: False
+    load_cloudmask: False  
+  B_plot_settings: null
+
+num_workers: 4
+iterations_per_epoch: 1000
