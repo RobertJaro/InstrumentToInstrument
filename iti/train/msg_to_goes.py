@@ -41,7 +41,7 @@ import xarray as xr
 
 parser = argparse.ArgumentParser(description='Train MSG to GOES translations')
 parser.add_argument('--config', 
-                    default="/home/freischem/InstrumentToInstrument/config/msg_to_goes.yaml",
+                    default="/home/anna.jungbluth/InstrumentToInstrument/config/msg_to_goes.yaml",
                     type=str, 
                     help='path to the config file.')
 
@@ -113,7 +113,7 @@ goes_editors = [
     # NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
     # RadUnitEditor(key="data"), TODO take into account for normalization if needed
     MeanStdNormEditor(norm_ds=goes_norm, key="data"),
-    StackDictEditor(),
+    StackDictEditor(allowed_keys = ['data']),
     ToTensorEditor(),
     RandomPatchEditor(patch_shape=(256, 256)),
 ]
@@ -124,10 +124,10 @@ msg_editors = [
     # CoordNormEditor(key="coords"), # Normalizes lats/lons to [-1, 1]
     NanDictEditor(key="data", fill_value=0), # Replaces NaNs in data
     # NanDictEditor(key="coords", fill_value=0), # Replaces NaNs in coordinates
-    # NanDictEditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
+    # NanDictEsditor(key="cloud_mask", fill_value=0), # Replaces NaNs in cloud_mask
     # RadUnitEditor(key="data"), TODO take into account for normalization if needed
     MeanStdNormEditor(norm_ds=msg_norm, key="data"),
-    StackDictEditor(),
+    StackDictEditor(allowed_keys = ['data']),
     ToTensorEditor(),
     RandomPatchEditor(patch_shape=(256, 256)),
 ]
@@ -196,18 +196,15 @@ module = ITIModule(**config['model'])
 # setup save callbacks
 logger.info(f"Initializing callbacks...")
 checkpoint_dir = os.path.join(save_dir, 'checkpoints')
+os.makedirs(checkpoint_dir, exist_ok=True)
 checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_dir, save_last=True, every_n_epochs=1, save_weights_only=False)
 save_callback = SaveCallback(checkpoint_dir)
 
 # setup plot callbacks
-#prediction_dir = os.path.join(save_dir, 'prediction')
-#os.makedirs(prediction_dir, exist_ok=True)
 plot_callbacks = []
 
-
-plot_settings_A = {"cmap": "viridris", "title": "MSG"} #, 'vmin': -1, 'vmax': 1}
-plot_settings_B = {"cmap": "viridris", "title": "GOES-16"} #, 'vmin': -1, 'vmax': 1}
-
+plot_settings_A = {"cmap": "viridis", "title": "MSG"} #, 'vmin': -1, 'vmax': 1}
+plot_settings_B = {"cmap": "viridis", "title": "GOES-16"} #, 'vmin': -1, 'vmax': 1}
 
 plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
 plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]

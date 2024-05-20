@@ -153,5 +153,40 @@ class ToTensorEditor(Editor):
         tensor = torch.as_tensor(data, dtype=self.dtype)
         return tensor
 
+class MeanStdNormEditor(Editor):
+    """
+    Normalise each band in the data using the mean and std from the norm_ds.
+    """
+    def __init__(self, norm_ds, key="data"):
+        """
+        Args:
+            norm_ds (xarray.Dataset): Dataset with normalization values (mean and std)
+            key (str): Key in dictionary to apply transformation
+        """
+        self.key = key
+        self.norm = norm_ds
+
+    def call(self, data_dict, **kwargs):
+        data = data_dict[self.key]
+        # use wavelengths and only normalise the bands that we have in the data
+        data_wavelengths = data_dict["wavelengths"]
+        # Get indeces of bands to select
+        indeces = [np.where(self.norm.band_wavelength == wvl)[0][0] for wvl in data_wavelengths]
+        
+        # extract relevant means and stds
+        means = self.norm['mean'][indeces].values
+        stds = self.norm['std'][indeces].values
+
+        # check that number of channels equals number of means & stds
+        assert data.shape[0] == means.shape[0]
+        assert data.shape[0] == stds.shape[0]
+
+        # apply normalization
+        data = (data - means[:, None, None]) / stds[:, None, None]
+        
+        # Update dictionary
+        data_dict[self.key] = data
+        return data_dict
+
 
 

@@ -1,14 +1,14 @@
-base_dir: /home/freischem/outputs/miniset/
+base_dir: /home/anna.jungbluth/outputs/miniset/
 data:
   A_path: /mnt/disks/data/miniset/msg/geoprocessed
   # converted_A_path:
   B_path: /mnt/disks/data/miniset/goes16/geoprocessed
   # converted_B_path: 
-  num_workers: 1
+  num_workers: 4
   iterations_per_epoch: 1000
 model:
-  input_dim_a: 11
-  input_dim_b: 16
+  input_dim_a: 5 #11
+  input_dim_b: 5 #16
   upsampling: 0
   discriminator_mode: CHANNELS
   lambda_diversity: 0
@@ -27,4 +27,4 @@ training:
   epochs: 10
 normalization: 
   # norm_dir: null
-  norm_dir: /home/freischem/outputs/miniset/20240517-0928/normalization/
+  norm_dir: /home/anna.jungbluth/outputs/miniset/20240520-1056/normalization/
