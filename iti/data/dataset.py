@@ -542,7 +542,6 @@ class SWAPDataset(BaseDataset):
         norm = proba2_norm[wavelength]
 
         editors = [LoadMapEditor(),
-                   SWAPPrepEditor(degradation=[-3.37591548e-05, 1.50555178e+00]),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
