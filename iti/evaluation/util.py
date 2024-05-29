@@ -124,7 +124,7 @@ def saveToFITS(maps, path):
 
 ################################### Download GCP bucket ###################################
 
-def download_gcp_bucket(bucket_name, destination_directory="", workers=8, max_results=1000):
+def download_gcp_bucket(bucket_name, bucket_directory = "", destination_directory="", workers=8, max_results=1000):
 
     """Download all of the blobs in a bucket, concurrently in a process pool.
 
