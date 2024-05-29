@@ -84,8 +84,8 @@ def getITIIntensity(maps, channels):
 ################################### Evaluation ##################################
 
 def difference_map(original, ground_truth, iti):
-    baseline = np.aps(original.data - ground_truth.data)
-    iti = np.aps(iti.data - ground_truth.data)
+    baseline = np.abs(original.data - ground_truth.data) * 100
+    iti = np.abs(iti.data - ground_truth.data) * 100
     return baseline, iti
 
 ################################### Plotting ####################################
