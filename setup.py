@@ -12,7 +12,7 @@ setup(
     description='Package for translation between image domains of different astrophysical instruments.',
     install_requires=['torch>=1.8', 'sunpy>=2.0', 'scikit-image', 'scikit-learn', 'tqdm',
                       'numpy', 'matplotlib', 'astropy', 'aiapy','drms', 'jupyter', 'sunpy_soar',
-                      'lightning', 'google', 'google-cloud-storage'],
+                      'lightning', 'google', 'google-cloud-storage', 'wandb'],
     classifiers=[
     'Development Status :: 3 - Alpha', # either "3 - Alpha", "4 - Beta" or "5 - Production/Stable"
     'License :: OSI Approved :: GPL-3.0 License',
