@@ -1,5 +1,6 @@
 from dateutil.parser import parse
 import pandas as pd
+import numpy as np
 import torch
 
 from tqdm import tqdm
@@ -79,6 +80,13 @@ def getITIIntensity(maps, channels):
             means.append(np.nanmean(m.data))
         intensity[c] = (dates, means[::len(c)])
     return intensity
+
+################################### Evaluation ##################################
+
+def difference_map(original, ground_truth, iti):
+    baseline = np.aps(original.data - ground_truth.data)
+    iti = np.aps(iti.data - ground_truth.data)
+    return baseline, iti
 
 ################################### Plotting ####################################
 
