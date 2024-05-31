@@ -25,23 +25,48 @@ warnings.filterwarnings('ignore')
 ################################### Get Data ###################################
 
 def getSWAPdata(f):
+    """
+    Load SWAP data and apply a crop to 1.1 solar radii
+
+    Args:
+        f: path to the SWAP data
+    """
     s_map, _ = LoadMapEditor().call(f)
     s_map = NormalizeRadiusEditor(resolution=1024).call(s_map)
     return s_map
 
 def getAIAdata(f, resolution=2048):
+    """
+    Load AIA data. This includes the cropping to 1.1 solar radii and a degradation correction for each channel.
+
+    Args:
+        f: path to the AIA data
+        resolution: resolution of the image
+    """
     s_map, _ = LoadMapEditor().call(f)
     s_map = NormalizeRadiusEditor(resolution=resolution).call(s_map)
     s_map = AIAPrepEditor(calibration='auto').call(s_map)
-    #data, _ = MapToDataEditor().call(s_map)
     return s_map
 
 def getFSIdata(f):
+    """
+    Load FSI data and apply a crop to 1.1 solar radii
+
+    Args:
+        f: path to the FSI data
+    """
     s_map, _ = LoadMapEditor().call(f)
     s_map = NormalizeRadiusEditor(resolution=1024, fix_irradiance_with_distance=True).call(s_map)
     return s_map
 
 def getHRIdata(f, resolution=4096):
+    """
+    Load HRI data and scale the observation to 1.1 solar radii
+
+    Args:
+        f: path to the HRI data
+        resolution: resolution of the image
+    """
     s_map, _ = LoadMapEditor().call(f)
     s_map = NormalizeRadiusEditor(resolution=resolution, rotate_north_up=False).call(s_map)
     return s_map
@@ -50,6 +75,14 @@ def getHRIdata(f, resolution=4096):
 ################################### Translatiom  ###############################
 
 def translate(files, translator):
+    """
+    Translate of the observations
+
+    Args:
+        files: list of files
+        translator: Translator class for specific instrument
+    """
+
     if torch.cuda.is_available():
         maps = list(translator.translate([f for f in files]))
     else:
@@ -61,6 +94,15 @@ def translate(files, translator):
 ################################### Intensity ##################################
 
 def getIntensity(files, channels, editor):
+    """
+    Get the intensity of the images
+
+    Args:
+        files: list of files
+        channels: list of channels
+        editor: Data loading editor
+    """
+
     intensity = {}
     for c, c_files in zip(channels, files):
         #c_files = c_files[::len(c_files) // 10]
@@ -72,6 +114,14 @@ def getIntensity(files, channels, editor):
 
 
 def getITIIntensity(maps, channels):
+    """
+    Get the intensity of the ITI translations
+
+    Args:
+        maps: list of SunPy maps
+        channels: list of translated channels
+    """
+
     intensity = {}
     for c, map in zip(channels, maps):
         dates = [m.meta['date-obs'] for m in map]
@@ -84,6 +134,15 @@ def getITIIntensity(maps, channels):
 ################################### Evaluation ##################################
 
 def difference_map(original, ground_truth, iti):
+    """
+    Compute the difference map between the original, ground truth and ITI images
+
+    Args:
+        original: SunPy map of the original image
+        ground_truth: SunPy map of the ground truth image
+        iti: SunPy map of the ITI image
+    """
+
     baseline = (original.data - ground_truth.data) * 100
     iti = (iti.data - ground_truth.data) * 100
     return baseline, iti
@@ -91,6 +150,16 @@ def difference_map(original, ground_truth, iti):
 ################################### Plotting ####################################
 
 def plotLightcurve(df_base, df_ground_truth, df_iti, name):
+    """
+    Plot the light curve of the baseline, ground truth and ITI
+
+    Args:
+        df_base: DataFrame of the baseline light curve
+        df_ground_truth: DataFrame of the ground truth light curve
+        df_iti: DataFrame of the ITI light curve
+        name: name of the light curve
+    """
+
     fig, axs = plt.subplots(1, 1, figsize=(20, 10))
     axs.plot(df_base['time'], df_base['intensity'], label='Baseline', c='g')
     axs.plot(df_iti['time'], df_iti['intensity'], label='ITI', c='r')
@@ -109,6 +178,19 @@ def plotLightcurve(df_base, df_ground_truth, df_iti, name):
 
 
 def plotImageComparison(original, ground_truth, iti, original_norm, ground_truth_norm, path=None, name=None):
+    """
+    Plot the original, ground truth and ITI images side by side
+
+    Args:
+        original: SunPy map of the original image
+        ground_truth: SunPy map of the ground truth image
+        iti: SunPy map of the ITI image
+        original_norm: Image normalization of the original image
+        ground_truth_norm: Image normalization of the ground truth image
+        path: path to save the image
+        name: name of the image
+    """
+
     fig, axs = plt.subplots(1, 3, subplot_kw={'projection': ground_truth}, figsize=(50, 20), dpi=100)
     original.plot(axes=axs[0], norm=original_norm)
     ground_truth.plot(axes=axs[1], norm=ground_truth_norm)
@@ -126,6 +208,13 @@ def plotImageComparison(original, ground_truth, iti, original_norm, ground_truth
 ################################### Save to FITS ##################################
 
 def saveToFITS(maps, path):
+    """
+    Save SunPy maps to FITS files
+
+    Args:
+        maps: list of SunPy maps
+        path: path to save the FITS files
+    """
     for i, m in tqdm(enumerate(maps)):
         m.save(path+maps[i].meta['date-obs']+'.fits')
 
@@ -142,6 +231,12 @@ def download_gcp_bucket(bucket_name, destination_directory="", workers=8, max_re
 
     Directories will be created automatically as needed, for instance to
     accommodate blob names that include slashes.
+
+    Args:
+        bucket_name (str): The ID of your GCS bucket
+        destination_directory (str): The directory on your computer to which to download all of the files. Empty string means "the current working directory".
+        workers (int): The maximum number of processes to use for the operation.
+        max_results (int): The maximum number of results to fetch from bucket.list_blobs().
     """
 
     # The ID of your GCS bucket

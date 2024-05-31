@@ -19,7 +19,12 @@ from tqdm import tqdm
 
 
 class SOHODownloader:
+    """
+    Class to download SOHO data from the VSO.
 
+    Args:
+        base_path (str): Path to the directory where the downloaded data should be stored.
+    """
     def __init__(self, base_path):
         self.base_path = base_path
         self.wavelengths = [171, 195, 284, 304]
@@ -27,6 +32,15 @@ class SOHODownloader:
         [os.makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
     def downloadDate(self, date):
+        """
+        Download the data for the given date.
+
+        Args:
+            date (datetime): The date for which the data should be downloaded.
+
+        Returns:
+            list: List of paths to the downloaded files.
+        """
         files = []
         try:
             # Download EIT
@@ -41,6 +55,16 @@ class SOHODownloader:
             [os.remove(f) for f in files]
 
     def downloadEIT(self, query_date, wl):
+        """
+        Download the EIT data for the given date and wavelength.
+
+        Args:
+            query_date (datetime): The date for which the data should be downloaded.
+            wl (int): The wavelength of the data.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         file_path = os.path.join(self.base_path, str(wl), "%s.fits" % query_date.isoformat("T", timespec='seconds'))
         if os.path.exists(file_path):
             return file_path  # skip existing downloads (e.g. retry)
@@ -65,6 +89,15 @@ class SOHODownloader:
         raise Exception("No valid file found for %s (%s)!" % (query_date.isoformat(), wl))
 
     def downloadMDI(self, download_date):
+        """
+        Download the MDI data for the given date.
+
+        Args:
+            download_date (datetime): The date for which the data should be downloaded.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         simplefilter('ignore')
         file_path = os.path.join(self.base_path, self.dirs[0],
                                  "%s.fits" % download_date.isoformat("T", timespec='seconds'))

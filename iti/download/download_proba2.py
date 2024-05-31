@@ -20,7 +20,12 @@ import sunpy_soar
 from tqdm import tqdm
 
 class Proba2Downloader:
+    """
+    Class to download Proba2 SWAP data from the VSO.
 
+    Args:
+        base_path (str): Path to the directory where the downloaded data should be stored.
+    """
     def __init__(self, base_path):
         self.base_path = base_path
         self.wavelengths = ["174"]
@@ -28,6 +33,15 @@ class Proba2Downloader:
         [os. makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
     def downloadDate(self, date):
+        """
+        Download the data for the given date.
+
+        Args:
+            date (datetime): The date for which the data should be downloaded.
+
+        Returns:
+            list: List of paths to the downloaded files.
+        """
         files = []
         try:
             # Download SWAP
@@ -40,6 +54,16 @@ class Proba2Downloader:
 
 
     def downloadSWAP(self, query_date, wl):
+        """
+        Download the SWAP data for the given date and wavelength.
+
+        Args:
+            query_date (datetime): The date for which the data should be downloaded.
+            wl (str): The wavelength for which the data should be downloaded.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         file_path = os.path.join(self.base_path, str(wl), "%s.fits" % query_date.isoformat("T", timespec='seconds'))
         if os.path.exists(file_path):
             return file_path

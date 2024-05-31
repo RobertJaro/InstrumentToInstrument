@@ -15,9 +15,16 @@ from sunpy.util import MetaDict
 
 
 class SDODownloader:
+    """
+    Class to download SDO data from JSOC.
 
-    #def __init__(self, base_path, email, wavelengths=['131', '171', '193', '211', '304', '335'], n_workers=5):
-    def __init__(self, base_path, email, wavelengths=['171'], n_workers=5):
+    Args:
+        base_path (str): Path to the directory where the downloaded data should be stored.
+        email (str): Email address for JSOC registration.
+        wavelengths (list): List of wavelengths to download.
+        n_workers (int): Number of worker threads for parallel download.
+    """
+    def __init__(self, base_path, email, wavelengths=['131', '171', '193', '211', '304', '335'], n_workers=5):
         self.ds_path = base_path
         self.wavelengths = [str(wl) for wl in wavelengths]
         self.n_workers = n_workers
@@ -26,6 +33,15 @@ class SDODownloader:
         self.drms_client = drms.Client(email=email, verbose=False)
 
     def download(self, sample):
+        """
+        Download the data from JSOC.
+
+        Args:
+            sample (tuple): Tuple containing the header, segment and time information.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         header, segment, t = sample
         try:
             dir = os.path.join(self.ds_path, '%d' % header['WAVELNTH'])
@@ -53,6 +69,15 @@ class SDODownloader:
             raise ex
 
     def downloadDate(self, date):
+        """
+        Download the data for the given date.
+
+        Args:
+            date (datetime): The date for which the data should be downloaded.
+
+        Returns:
+            list: List of paths to the downloaded files.
+        """
         id = date.isoformat()
 
         logging.info('Start download: %s' % id)
@@ -85,6 +110,15 @@ class SDODownloader:
         logging.info('Finished: %s' % id)
 
     def fetchDataFallback(self, date):
+        """
+        Download the data for the given date using fallback.
+
+        Args:
+            date (datetime): The date for which the data should be downloaded.
+
+        Returns:
+            list: List of paths to the downloaded files.
+        """
         id = date.isoformat()
 
         logging.info('Fallback download: %s' % id)

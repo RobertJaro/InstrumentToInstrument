@@ -25,7 +25,22 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
 
 
 class ITIDataModule(LightningDataModule):
+    """
+    DataModule for the ITI project based on the LightningDataModule. It provides the DataLoader for the training and validation data.
 
+
+    Args:
+        A_train_ds: Dataset for domain A training data
+        B_train_ds: Dataset for domain B training data
+        A_valid_ds: Dataset for domain A validation data
+        B_valid_ds: Dataset for domain B validation data
+        iterations_per_epoch: Number of iterations per epoch
+        num_workers: Number of workers for DataLoader
+        batch_size: Batch size for DataLoader
+        **kwargs: Additional arguments
+
+
+    """
     def __init__(self, A_train_ds, B_train_ds, A_valid_ds, B_valid_ds, iterations_per_epoch=10000, num_workers=4, batch_size=1, **kwargs):
         super().__init__()
         self.A_train_ds = A_train_ds
@@ -37,6 +52,12 @@ class ITIDataModule(LightningDataModule):
         self.iterations_per_epoch = iterations_per_epoch
 
     def train_dataloader(self):
+        """
+        DataLoader for the training data
+
+        Returns:
+            dict: DataLoader for the training data. This includes the generators and discriminators for both domains.
+        """
         gen_A = DataLoader(self.A_train_ds, batch_size=self.batch_size, num_workers=self.num_workers,
                            sampler=RandomSampler(self.A_train_ds, replacement=True, num_samples=self.iterations_per_epoch))
         dis_A = DataLoader(self.A_train_ds, batch_size=self.batch_size, num_workers=self.num_workers,
@@ -48,6 +69,12 @@ class ITIDataModule(LightningDataModule):
         return {"gen_A": gen_A, "dis_A": dis_A, "gen_B": gen_B, "dis_B": dis_B}
 
     def val_dataloader(self):
+        """
+        DataLoader for the validation data
+
+        Returns:
+            list: DataLoader for the validation data. This includes the generators and discriminators for both domains.
+        """
         A = DataLoader(self.A_valid_ds, batch_size=self.batch_size, num_workers=self.num_workers)
         B = DataLoader(self.B_valid_ds, batch_size=self.batch_size, num_workers=self.num_workers)
         return [A, B]
@@ -55,13 +82,23 @@ class ITIDataModule(LightningDataModule):
 
 
 class Norm(Enum):
+    """
+    Enum for normalization types
+    """
     CONTRAST = 'contrast'
     IMAGE = 'image'
     PEAK = 'adjusted'
     NONE = 'none'
 
 class ArrayDataset(Dataset):
+    """
+    Dataset for numpy arrays
 
+    Args:
+        data (np.array): Data
+        editors (List[Editor]): List of editors
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, editors: List[Editor], **kwargs):
         self.data = data
         self.editors = editors
@@ -108,6 +145,18 @@ class ArrayDataset(Dataset):
 
 
 class BaseDataset(Dataset):
+    """
+    Base class for datasets
+
+    Args:
+        data (Union[str, list]): Data
+        editors (List[Editor]): List of editors
+        ext (str): File extension
+        limit (int): Limit of samples
+        months (list): List of months
+        date_parser: Date parser
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data: Union[str, list], editors: List[Editor], ext: str = None, limit: int = None,
                  months: list = None, date_parser=None, **kwargs):
@@ -166,7 +215,14 @@ class BaseDataset(Dataset):
 
 
 class StackDataset(BaseDataset):
+    """
+    Dataset for stacked data
 
+    Args:
+        data_sets (list): List of datasets
+        limit (int): Limit of samples
+        **kwargs: Additional arguments
+    """
     def __init__(self, data_sets, limit=None, **kwargs):
         self.data_sets = data_sets
 
@@ -178,6 +234,14 @@ class StackDataset(BaseDataset):
 
 
 class StorageDataset(Dataset):
+    """
+    Dataset for storing data to accelerate training
+
+    Args:
+        dataset (BaseDataset): Dataset
+        store_dir (str): Storage directory
+        ext_editors (list): List of editors
+    """
     def __init__(self, dataset: BaseDataset, store_dir, ext_editors=[]):
         self.dataset = dataset
         self.store_dir = store_dir
@@ -237,6 +301,22 @@ class StorageDataset(Dataset):
 
 
 def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, ext=None, basenames=None, **kwargs):
+    """
+    Get intersecting files from multiple directories
+
+    Args:
+        path (str): Path to directories
+        dirs (list): List of directories
+        months (list): List of months
+        years (list): List of years
+        n_samples (int): Number of samples
+        ext (str): File extension
+        basenames (list): List of basenames
+        **kwargs: Additional arguments
+
+    Returns:
+        list: List of intersecting files
+    """
     pattern = '*' if ext is None else '*' + ext
     if basenames is None:
         basenames = [[os.path.basename(path) for path in glob.glob(os.path.join(path, str(d), '**', pattern), recursive=True)] for d in dirs]
@@ -252,7 +332,17 @@ def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, 
 
 
 class SDODataset(StackDataset):
+    """
+    Dataset for SDO data
 
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        wavelengths (list): List of wavelengths
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, patch_shape=None, wavelengths=None, resolution=2048, ext='.fits', **kwargs):
         wavelengths = [171, 193, 211, 304, 6173, ] if wavelengths is None else wavelengths
         if isinstance(data, list):
@@ -270,7 +360,17 @@ class SDODataset(StackDataset):
 
 
 class SOHODataset(StackDataset):
+    """
+    Dataset for SOHO data
 
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        wavelengths (list): List of wavelengths
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, patch_shape=None, resolution=1024, ext='.fits', wavelengths=None, **kwargs):
         wavelengths = [171, 195, 284, 304, 'mag', ] if wavelengths is None else wavelengths
         if isinstance(data, list):
@@ -288,7 +388,15 @@ class SOHODataset(StackDataset):
 
 
 class STEREODataset(StackDataset):
+    """
+    Dataset for STEREO data
 
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        resolution (int): Resolution
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, patch_shape=None, resolution=1024, **kwargs):
         if isinstance(data, list):
             paths = data
@@ -305,7 +413,16 @@ class STEREODataset(StackDataset):
 
 
 class EITDataset(BaseDataset):
+    """
+    Dataset for SOHO/EIT data
 
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, wavelength, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[wavelength]
 
@@ -320,7 +437,16 @@ class EITDataset(BaseDataset):
 
 
 class MDIDataset(BaseDataset):
+    """
+    Dataset for SOHO/MDI data
 
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[6173]
         editors = [LoadMapEditor(),
@@ -335,7 +461,17 @@ class MDIDataset(BaseDataset):
 
 
 class AIADataset(BaseDataset):
+    """
+    Dataset for SDO/AIA data
 
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        calibration (str): Calibration type
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, wavelength, resolution=2048, ext='.fits', calibration='auto', **kwargs):
         norm = sdo_norms[wavelength]
 
@@ -349,7 +485,16 @@ class AIADataset(BaseDataset):
 
 
 class HMIDataset(BaseDataset):
+    """
+    Dataset for SDO/HMI data
 
+    Args:
+        data: Data
+        id (int): ID
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, id, resolution=2048, ext='.fits', **kwargs):
         norm = sdo_norms[id]
 
@@ -365,7 +510,14 @@ class HMIDataset(BaseDataset):
 
 
 class HMIContinuumDataset(BaseDataset):
+    """
+    Dataset for SDO/HMI continuum data
 
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, patch_shape=None, **kwargs):
         norm = sdo_norms['continuum']
 
@@ -381,7 +533,14 @@ class HMIContinuumDataset(BaseDataset):
 
 
 class SDOMLDataset(BaseDataset):
+    """
+    Dataset for SDO/ML data
 
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, wavelength, resolution=2048, ext='.fits', **kwargs):
         norm = sdo_norms[wavelength]
 
@@ -394,7 +553,15 @@ class SDOMLDataset(BaseDataset):
         super().__init__(data, editors=editors, ext=ext, **kwargs)
 
 class HinodeDataset(BaseDataset):
+    """
+    Dataset for Hinode data
 
+    Args:
+        data: Data
+        scale (float): Scale
+        wavelength (str): Wavelength
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, scale=0.15, wavelength='continuum', **kwargs):
         norm = hinode_norms[wavelength]
 
@@ -409,7 +576,16 @@ class HinodeDataset(BaseDataset):
 
 
 class SECCHIDataset(BaseDataset):
+    """
+    Dataset for STEREO/SECCHI data
 
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        degradation (list): Degradation
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, wavelength, resolution=1024, degradation=None,**kwargs):
         norm = stereo_norms[wavelength]
 
@@ -423,7 +599,15 @@ class SECCHIDataset(BaseDataset):
 
 
 class KSODataset(BaseDataset):
+    """
+    Dataset for KSO data
 
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data: Union[str, list], resolution=256, ext=".fts.gz", **kwargs):
         editors = [LoadMapEditor(),
                    KSOPrepEditor(),
@@ -435,7 +619,16 @@ class KSODataset(BaseDataset):
 
 
 class KSOFlatDataset(BaseDataset):
+    """
+    Dataset for KSO flat data including limb darkening correction
 
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        date_parser: Date parser
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, resolution=256, ext=".fts.gz", date_parser=None, **kwargs):
         editors = [LoadMapEditor(),
                    KSOPrepEditor(),
@@ -451,7 +644,16 @@ class KSOFlatDataset(BaseDataset):
 
 
 class KSOFilmDataset(BaseDataset):
+    """
+    Dataset for KSO film data
 
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        date_parser: Date parser
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, resolution=256, ext=".fts.gz", date_parser=None, **kwargs):
         editors = [LoadFITSEditor(),
                    KSOFilmPrepEditor(),
@@ -467,7 +669,15 @@ class KSOFilmDataset(BaseDataset):
 
 
 class GregorDataset(BaseDataset):
+    """
+    Dataset for GREGOR data
 
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, ext='.fts', **kwargs):
         norm = gregor_norms['gband']
         sub_editors = [MapToDataEditor(),
@@ -480,7 +690,14 @@ class GregorDataset(BaseDataset):
 
 
 class ZerosDataset(Dataset):
+    """
+    Dataset for zeros
 
+    Args:
+        length (int): Length
+        resolution (int): Resolution
+        **kwargs: Additional arguments
+    """
     def __init__(self, length, resolution=1024, **kwargs):
         self.shape = (1, resolution, resolution)
         self.length = length
@@ -496,7 +713,17 @@ class ZerosDataset(Dataset):
 
 
 class EUIDataset(StackDataset):
+    """
+    Stacked Dataset for Solar Orbiter/EUI Full Sun Imager (FSI) data
 
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        wavelengths (list): List of wavelengths
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, patch_shape=None, wavelengths=None, resolution=1024, ext='.fits', **kwargs):
         wavelengths = ['eui-fsi174-image', 'eui-fsi304-image'] if wavelengths is None else wavelengths
         if isinstance(data, list):
@@ -513,6 +740,16 @@ class EUIDataset(StackDataset):
 
 
 class FSIDataset(BaseDataset):
+    """
+    Dataset for Solar Orbiter/EUI Full Sun Imager (FSI) data
+
+    Args:
+        data: Data
+        wavelength (str): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, wavelength, resolution=1024, ext='.fits', **kwargs):
         norm = solo_norm[wavelength]
 
@@ -525,6 +762,15 @@ class FSIDataset(BaseDataset):
 
 
 class HRIDataset(BaseDataset):
+    """
+    Dataset for Solar Orbiter/EUI High Resolution Imager (HRI) data
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, resolution=4096, ext='.fits', **kwargs):
         norm = hri_norm[174]
 
@@ -538,6 +784,15 @@ class HRIDataset(BaseDataset):
 
 
 class SWAPDataset(BaseDataset):
+    """
+    Dataset for PROBA2/SWAP data
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
     def __init__(self, data, wavelength=174, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
         norm = proba2_norm[wavelength]
 

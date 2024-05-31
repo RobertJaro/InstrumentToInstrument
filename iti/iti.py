@@ -11,7 +11,38 @@ from iti.train.model import DiscriminatorMode, GeneratorAB, GeneratorBA, Discrim
 
 
 class ITIModule(LightningModule):
+    """
+    ITI module for the ITI framework. The module contains the following networks:
+    - GeneratorAB: Generator for domain A to B
+    - GeneratorBA: Generator for domain B to A
+    - Discriminator: Discriminator for domain A and B
+    - NoiseEstimator: Noise estimator for domain A
 
+    Args:
+        input_dim_a (int): Input dimension for domain A.
+        input_dim_b (int): Input dimension for domain B.
+        upsampling (int): Upsampling factor.
+        noise_dim (int): Dimension of the noise.
+        n_filters (int): Number of filters.
+        activation (str): Activation function.
+        norm (str): Normalization.
+        use_batch_statistic (bool): Use batch statistic.
+        n_discriminators (int): Number of discriminators.
+        discriminator_mode (DiscriminatorMode): Discriminator mode.
+        depth_generator (int): Depth of the generator.
+        depth_discriminator (int): Depth of the discriminator.
+        depth_noise (int): Depth of the noise.
+        skip_connections (bool): Use skip connections.
+        lambda_discriminator (float): Weight for the discriminator loss.
+        lambda_reconstruction (float): Weight for the reconstruction loss.
+        lambda_reconstruction_id (float): Weight for the reconstruction identity loss.
+        lambda_content (float): Weight for the content loss.
+        lambda_content_id (float): Weight for the content identity loss.
+        lambda_diversity (float): Weight for the diversity loss.
+        lambda_noise (float): Weight for the noise loss.
+        learning_rate (float): Learning rate.
+        **kwargs: Additional keyword arguments.
+    """
     def __init__(self, input_dim_a=1, input_dim_b=1, upsampling=0, noise_dim=16, n_filters=64,
                  activation='tanh', norm='in_rs_aff', use_batch_statistic=False,
                  n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
@@ -19,32 +50,6 @@ class ITIModule(LightningModule):
                  lambda_discriminator=1, lambda_reconstruction=1, lambda_reconstruction_id=.1,
                  lambda_content=10, lambda_content_id=1, lambda_diversity=1, lambda_noise=1,
                  learning_rate=1e-4, **kwargs):
-        """
-        Initialize the ITI module and individual models.
-
-        :param input_dim_a:
-        :param input_dim_b:
-        :param upsampling:
-        :param noise_dim:
-        :param n_filters:
-        :param activation:
-        :param norm:
-        :param use_batch_statistic:
-        :param n_discriminators:
-        :param discriminator_mode:
-        :param depth_generator:
-        :param depth_discriminator:
-        :param depth_noise:
-        :param skip_connections:
-        :param lambda_discriminator:
-        :param lambda_reconstruction:
-        :param lambda_reconstruction_id:
-        :param lambda_content:
-        :param lambda_content_id:
-        :param lambda_diversity:
-        :param lambda_noise:
-        :param learning_rate:
-        """
         super().__init__()
 
         self.noise_dim = noise_dim

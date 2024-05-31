@@ -16,7 +16,12 @@ from tqdm import tqdm
 
 
 class STEREODownloader:
+    """
+    Class to download STEREO data from the VSO.
 
+    Args:
+        base_path (str): Path to the directory where the downloaded data should be stored.
+    """
     def __init__(self, base_path):
         self.base_path = base_path
         self.wavelengths = [304, 284, 195, 171]
@@ -24,6 +29,15 @@ class STEREODownloader:
         [os.makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
     def downloadDate(self, sample):
+        """
+        Download the data for the given date.
+
+        Args:
+            sample (tuple): Tuple containing the date and source information.
+
+        Returns:
+            list: List of paths to the downloaded files.
+        """
         date, source = sample
         files = []
         try:
@@ -36,6 +50,17 @@ class STEREODownloader:
             [os.remove(f) for f in files if os.path.exists(f)]
 
     def downloadSECCHI(self, query_date, wl, source):
+        """
+        Download the SECCHI data for the given date, wavelength and source.
+
+        Args:
+            query_date (datetime): The date for which the data should be downloaded.
+            wl (int): The wavelength of the data.
+            source (str): The source of the data.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         file_path = os.path.join(self.base_path, str(wl), "%s.fits" % query_date.isoformat("T", timespec='seconds'))
         if os.path.exists(file_path):
             return file_path  # skip existing downloads (e.g. retry)

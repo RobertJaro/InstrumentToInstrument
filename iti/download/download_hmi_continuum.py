@@ -14,7 +14,16 @@ from sunpy.util import MetaDict
 
 
 class HMIContinuumDownloader:
+    """
+    Class to download HMI continuum data from JSOC.
 
+    Args:
+        ds_path (str): Path to the directory where the downloaded data should be stored.
+        email (str): Email address for JSOC registration.
+        num_worker_threads (int): Number of worker threads for parallel download.
+        ignore_quality (bool): If True, data with quality flag != 0 will be downloaded.
+        series (str): Series name of the HMI continuum data.
+    """
     def __init__(self, ds_path, email, num_worker_threads=4, ignore_quality=False, series='hmi.Ic_720s'):
         self.series = series
         self.ignore_quality = ignore_quality
@@ -32,6 +41,15 @@ class HMIContinuumDownloader:
         self.drms_client = drms.Client(email=email, verbose=False)
 
     def download(self, data):
+        """
+        Download the data from JSOC.
+
+        Args:
+            data (tuple): Tuple containing the header, segment and time information.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         header, segment, t = data
         map_path = os.path.join(self.ds_path, '%s.fits' % t.isoformat('T', timespec='seconds'))
         if os.path.exists(map_path):
@@ -53,6 +71,15 @@ class HMIContinuumDownloader:
         return map_path
 
     def fetchDates(self, dates):
+        """
+        Fetch the data for the given dates.
+
+        Args:
+            dates (list): List of dates for which the data should be downloaded.
+
+        Returns:
+            list: List of downloaded files.
+        """
         header_info = []
         logging.info('Fetch header information')
         for date in dates:
@@ -68,6 +95,15 @@ class HMIContinuumDownloader:
         return files
 
     def fetchData(self, time):
+        """
+        Fetch the data for the given time.
+
+        Args:
+            time (datetime): Time for which the data should be downloaded.
+
+        Returns:
+            list: List of tuples containing the header, segment and time information.
+        """
         # query
         time_param = '%sZ' % time.isoformat('_', timespec='seconds')
         ds_hmi = '%s[%s]{continuum}' % (self.series, time_param)

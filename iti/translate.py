@@ -18,7 +18,17 @@ from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEdi
 
 
 class InstrumentToInstrument:
+    """
+    Core class for instrument to instrument translation.
 
+    Args:
+        model_name (str): Name of the model file.
+        model_path (str): Path to the model file.
+        device (torch.device): Device on which the model should be loaded.
+        depth_generator (int): Depth of the generator network.
+        patch_factor (int): Factor by which the image should be divided into patches.
+        n_workers (int): Number of workers for the multiprocessing pool.
+    """
     def __init__(self, model_name, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
         self.patch_factor = patch_factor
         self.depth_generator = depth_generator
@@ -155,7 +165,12 @@ class InstrumentConverter:
 
 
 class SOHOToSDO(InstrumentToInstrument):
+    """
+    SOHO to SDO translation.
 
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='soho_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304], sdo_norms['mag']]
@@ -178,7 +193,12 @@ class SOHOToSDO(InstrumentToInstrument):
 
 
 class SOHOToSDOEUV(SOHOToSDO):
+    """
+    SOHO to SDO translation of EUV images.
 
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='soho_to_sdo_euv_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
@@ -191,7 +211,12 @@ class SOHOToSDOEUV(SOHOToSDO):
 
 
 class STEREOToSDO(InstrumentToInstrument):
+    """
+    STEREO to SDO translation.
 
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='stereo_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -218,7 +243,12 @@ class STEREOToSDO(InstrumentToInstrument):
 
 
 class STEREOToSDOMagnetogram(InstrumentToInstrument):
+    """
+    STEREO to SDO magnetogram translation.
 
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='stereo_to_sdo_mag_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -253,6 +283,13 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
 
 class KSOLowToHigh(InstrumentToInstrument):
+    """
+    KSO image enhancement translation.
+
+    Args:
+        model_name (str): Name of the model file.
+        resolution (int): Resolution of the images.
+    """
     def __init__(self, model_name='kso_low_to_high_v0_2.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
@@ -267,6 +304,13 @@ class KSOLowToHigh(InstrumentToInstrument):
 
 
 class KSOFilmToCCD(InstrumentToInstrument):
+    """
+    KSO film to CCD translation.
+
+    Args:
+        model_name (str): Name of the model file.
+        resolution (int): Resolution of the images.
+    """
     def __init__(self, model_name='kso_film_to_ccd_v0_1.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
@@ -281,6 +325,12 @@ class KSOFilmToCCD(InstrumentToInstrument):
 
 
 class HMIToHinode(InstrumentToInstrument):
+    """
+    SDO HMI to Hinode translation.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='hmi_to_hinode_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -293,7 +343,12 @@ class HMIToHinode(InstrumentToInstrument):
 
 
 class KSOFlatConverter(InstrumentConverter):
+    """
+    KSO flat image converter.
 
+    Args:
+        resolution (int): Resolution of the images.
+    """
     def __init__(self, resolution, **kwargs):
         super().__init__(**kwargs)
         self.resolution = resolution
@@ -304,7 +359,12 @@ class KSOFlatConverter(InstrumentConverter):
 
 
 class SWAPToAIA(InstrumentToInstrument):
+    """
+    PROBA2 SWAP to SDO AIA translation.
 
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='swap_to_aia_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -327,6 +387,12 @@ class SWAPToAIA(InstrumentToInstrument):
 
 
 class FSIToAIA(InstrumentToInstrument):
+    """
+    Solar Orbiter FSI to SDO AIA translation.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='fsi_to_aia_v0_3.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[304]]
@@ -349,7 +415,12 @@ class FSIToAIA(InstrumentToInstrument):
 
 
 class AIAToHRI(InstrumentToInstrument):
+    """
+    SDO AIA to Solar Orbiter HRI translation.
 
+    Args:
+        model_name (str): Name of the model file.
+    """
     def __init__(self, model_name='aia_to_hri_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 

@@ -14,7 +14,18 @@ from iti.train.model import GeneratorAB
 from iti.trainer import skip_invalid
 
 def calculate_fid_given_paths(paths, batch_size, device, dims):
-    """Calculates the FID of two paths"""
+    """
+    Calculates the FID of two paths
+
+    Args:
+        paths (tuple): Tuple containing the paths to the two datasets.
+        batch_size (int): Batch size.
+        device (torch.device): Device to use.
+        dims (int): Number of dimensions.
+
+    Returns:
+        float: FID value.
+    """
     for p in paths:
         if not os.path.exists(p):
             raise RuntimeError('Invalid path: %s' % p)
@@ -32,6 +43,20 @@ def calculate_fid_given_paths(paths, batch_size, device, dims):
     return fid_value
 
 def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4, scale_factor=1):
+    """
+    Compute the FID score for the given datasets.
+
+    Args:
+        base_path (str): Base path to store the images.
+        dataset_A (Dataset): Dataset A.
+        dataset_B (Dataset): Dataset B.
+        model (GeneratorAB): Model to use.
+        batch_size (int): Batch size.
+        scale_factor (int): Scale factor.
+
+    Returns:
+        tuple: FID scores for the translation AB and A.
+    """
     path_A = os.path.join(base_path, 'A')
     path_B = os.path.join(base_path, 'B')
     path_AB = os.path.join(base_path, 'AB')
@@ -69,6 +94,14 @@ def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4,
 
 
 def saveImage(img_id, path, sample):
+    """
+    Save the image to the given path.
+
+    Args:
+        img_id (int): Image ID.
+        path (str): Path to store the image.
+        sample (np.ndarray): Image data.
+    """
     for c in range(sample.shape[0]):
         os.makedirs(os.path.join(path, 'channel%d' % c), exist_ok=True)
         file_path = os.path.join(path, 'channel%d' % c, '%d.jpg' % img_id)
