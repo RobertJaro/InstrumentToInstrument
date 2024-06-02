@@ -132,10 +132,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Download SOHO data')
     parser.add_argument('--download_dir', type=str, help='path to the download directory.')
     parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
+    parser.add_argument('--start_date', type=str, help='start date for the download.', required=False)
+    parser.add_argument('--end_date', type=str, help='end date for the download.', required=False, default=str(datetime.now()).split(' ')[0])
 
     args = parser.parse_args()
     base_path = args.download_dir
     n_workers = args.n_workers
+    start_date = args.start_date
+    end_date = args.end_date
 
     drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
     download_util = SOHODownloader(base_path)
@@ -144,10 +148,10 @@ if __name__ == '__main__':
         handlers=[
             logging.StreamHandler()
         ])
-    start_date = datetime(1996, 1, 1, 0, 0)
-    end_date = datetime.now()
-    num_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-    month_dates = [start_date + i * relativedelta(months=1) for i in range(num_months)]
+    start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+    num_months = (end_date_datetime.year - start_date_datetime.year) * 12 + (end_date_datetime.month - start_date_datetime.month)
+    month_dates = [start_date_datetime + i * relativedelta(months=1) for i in range(num_months)]
     for date in month_dates:
             search = Fido.search(a.Time(date, date + relativedelta(months=1)),
                                  a.Provider("SDAC"), a.Instrument('EIT'),

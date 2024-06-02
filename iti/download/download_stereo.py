@@ -92,10 +92,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Download STEREO data')
     parser.add_argument('--download_dir', type=str, help='path to the download directory.')
     parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
+    parser.add_argument('--start_date', type=str, help='start date for the download.', required=False, default='2008-05-01')
+    parser.add_argument('--end_date', type=str, help='end date for the download.', required=False, default=str(datetime.now()).split(' ')[0])
 
     args = parser.parse_args()
     base_path = args.download_dir
     n_workers = args.n_workers
+    start_date = args.start_date
+    end_date = args.end_date
 
     drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
     download_util = STEREODownloader(base_path)
@@ -108,10 +112,10 @@ if __name__ == '__main__':
     existing_dates = set(
         [os.path.basename(f).replace('.fits', '')[:10] for f in glob('/localdata/USER/rja/stereo_iti2021/**/*.fits')])
 
-    start_date = datetime(2008, 5, 1, 0, 0)
-    end_date = datetime.now()
-    num_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-    month_dates = [start_date + relativedelta(months=i) for i in range(num_months)]
+    start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+    num_months = (end_date_datetime.year - start_date_datetime.year) * 12 + (end_date_datetime.month - start_date_datetime.month)
+    month_dates = [start_date_datetime + relativedelta(months=i) for i in range(num_months)]
     for date in month_dates:
         samples = []
         for i in range(((date + relativedelta(months=1)) - date).days):
