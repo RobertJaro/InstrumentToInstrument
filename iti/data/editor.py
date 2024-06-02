@@ -429,7 +429,7 @@ class KSOFilmPrepEditor(Editor):
 
 class AIAPrepEditor(Editor):
     """
-    AIA data preparation editor
+    AIA data preparation editor for instrument degradation correction
 
     Args:
         calibration (str): calibration
