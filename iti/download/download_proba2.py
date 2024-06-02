@@ -19,7 +19,7 @@ from sunpy.net import Fido, attrs as a
 import sunpy_soar
 from tqdm import tqdm
 
-class Proba2Downloader:
+class PROBA2Downloader:
     """
     Class to download PROBA2 SWAP data from the VSO.
 
