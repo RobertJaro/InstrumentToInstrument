@@ -358,7 +358,7 @@ class KSOFlatConverter(InstrumentConverter):
         return self._convertDataset(ds)
 
 
-class SWAPToAIA(InstrumentToInstrument):
+class PROBA2ToSDO(InstrumentToInstrument):
     """
     PROBA2 SWAP to SDO AIA translation for image enhancement.
 
