@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 class Proba2Downloader:
     """
-    Class to download Proba2 SWAP data from the VSO.
+    Class to download PROBA2 SWAP data from the VSO.
 
     Args:
         base_path (str): Path to the directory where the downloaded data should be stored.
