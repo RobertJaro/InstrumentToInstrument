@@ -386,7 +386,7 @@ class PROBA2ToSDO(InstrumentToInstrument):
         return new_meta
 
 
-class FSIToAIA(InstrumentToInstrument):
+class SolarOrbiterToSDO(InstrumentToInstrument):
     """
     Solar Orbiter FSI to SDO AIA translation for instrument intercalibration.
 
@@ -414,7 +414,7 @@ class FSIToAIA(InstrumentToInstrument):
         return new_meta
 
 
-class AIAToHRI(InstrumentToInstrument):
+class SDOToSolarOrbiter(InstrumentToInstrument):
     """
     SDO AIA to Solar Orbiter HRI translation to obtain super-resolution observations.
 
