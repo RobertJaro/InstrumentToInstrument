@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 class STEREODownloader:
     """
-    Class to download STEREO data from the VSO.
+    Class to download STEREO SECCHI data from the VSO.
 
     Args:
         base_path (str): Path to the directory where the downloaded data should be stored.
