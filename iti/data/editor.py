@@ -300,7 +300,7 @@ class NormalizeEditor(Editor):
 
 class ReshapeEditor(Editor):
     """
-    Reshape data editor
+    Reshape data editor to [channel, height, width]
 
     Args:
         shape (tuple): shape
