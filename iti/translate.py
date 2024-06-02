@@ -166,7 +166,7 @@ class InstrumentConverter:
 
 class SOHOToSDO(InstrumentToInstrument):
     """
-    SOHO to SDO translation.
+    SOHO to SDO translation of EUV and magnetogram observations.
 
     Args:
         model_name (str): Name of the model file.
@@ -194,7 +194,7 @@ class SOHOToSDO(InstrumentToInstrument):
 
 class SOHOToSDOEUV(SOHOToSDO):
     """
-    SOHO to SDO translation of EUV images.
+    SOHO to SDO translation of EUV observations.
 
     Args:
         model_name (str): Name of the model file.
@@ -212,7 +212,7 @@ class SOHOToSDOEUV(SOHOToSDO):
 
 class STEREOToSDO(InstrumentToInstrument):
     """
-    STEREO to SDO translation.
+    STEREO to SDO translation of EUV observations.
 
     Args:
         model_name (str): Name of the model file.
@@ -244,7 +244,7 @@ class STEREOToSDO(InstrumentToInstrument):
 
 class STEREOToSDOMagnetogram(InstrumentToInstrument):
     """
-    STEREO to SDO magnetogram translation.
+    STEREO to SDO magnetogram translation
 
     Args:
         model_name (str): Name of the model file.
@@ -360,7 +360,7 @@ class KSOFlatConverter(InstrumentConverter):
 
 class SWAPToAIA(InstrumentToInstrument):
     """
-    PROBA2 SWAP to SDO AIA translation.
+    PROBA2 SWAP to SDO AIA translation for image enhancement.
 
     Args:
         model_name (str): Name of the model file.
@@ -388,7 +388,7 @@ class SWAPToAIA(InstrumentToInstrument):
 
 class FSIToAIA(InstrumentToInstrument):
     """
-    Solar Orbiter FSI to SDO AIA translation.
+    Solar Orbiter FSI to SDO AIA translation for instrument intercalibration.
 
     Args:
         model_name (str): Name of the model file.
@@ -416,7 +416,7 @@ class FSIToAIA(InstrumentToInstrument):
 
 class AIAToHRI(InstrumentToInstrument):
     """
-    SDO AIA to Solar Orbiter HRI translation.
+    SDO AIA to Solar Orbiter HRI translation to obtain super-resolution observations.
 
     Args:
         model_name (str): Name of the model file.
