@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 class SOHODownloader:
     """
-    Class to download SOHO data from the VSO.
+    Class to download SOHO EIT and MDI data from the VSO.
 
     Args:
         base_path (str): Path to the directory where the downloaded data should be stored.

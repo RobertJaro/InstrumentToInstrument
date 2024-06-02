@@ -15,7 +15,7 @@ from sunpy.util import MetaDict
 
 class HMIContinuumDownloader:
     """
-    Class to download HMI continuum data from JSOC.
+    Class to download SDO HMI continuum data from JSOC.
 
     Args:
         ds_path (str): Path to the directory where the downloaded data should be stored.
