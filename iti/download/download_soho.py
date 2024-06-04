@@ -25,11 +25,10 @@ class SOHODownloader:
     Args:
         base_path (str): Path to the directory where the downloaded data should be stored.
     """
-    def __init__(self, base_path):
+    def __init__(self, base_path, wavelengths=['171', '195', '284', '304']):
         self.base_path = base_path
-        self.wavelengths = [171, 195, 284, 304]
-        self.dirs = ['mag', '171', '195', '284', '304', ]
-        [os.makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
+        self.wavelengths = [str(wl) for wl in wavelengths]
+        [os.makedirs(os.path.join(base_path, wl), exist_ok=True) for wl in self.wavelengths]
 
     def downloadDate(self, date):
         """
