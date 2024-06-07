@@ -490,7 +490,7 @@ class NormalizeRadiusEditor(Editor):
 
     Args:
         resolution (int): resolution
-        padding_factor (float): padding factor
+        padding_factor (float): specify the solar radius padding factor
         crop (bool): crop
         rotate_north_up (bool): rotate north up
         fix_irradiance_with_distance (bool): fix irradiance with distance
