@@ -5,13 +5,12 @@ import matplotlib.pyplot as plt
 import torch
 from pytorch_fid.fid_score import compute_statistics_of_path, calculate_frechet_distance
 from pytorch_fid.inception import InceptionV3
-from sklearn.externals._pilutil import toimage
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.train.model import GeneratorAB
-from iti.trainer import skip_invalid
+from iti.train.util import skip_invalid
+
 
 def calculate_fid_given_paths(paths, batch_size, device, dims):
     """
@@ -42,7 +41,7 @@ def calculate_fid_given_paths(paths, batch_size, device, dims):
 
     return fid_value
 
-def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4, scale_factor=1):
+def computeFID(base_path, dataset_A, dataset_B, model, batch_size=4, scale_factor=1):
     """
     Compute the FID score for the given datasets.
 
@@ -87,9 +86,12 @@ def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4,
             i += 1
             saveImage(i, path_B, sample)
 
-    fid_AB = [calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_AB, dir)), batch_size, device, 2048) for dir in os.listdir(path_B)]
-    fid_A = [calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_A, dir)), batch_size, device, 2048) for dir in os.listdir(path_B)]
-    shutil.rmtree(path_A), shutil.rmtree(path_B), shutil.rmtree(path_AB) # clean up
+    fid_AB = [
+        calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_AB, dir)), batch_size, device, 2048) for
+        dir in os.listdir(path_B)]
+    fid_A = [calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_A, dir)), batch_size, device, 2048)
+             for dir in os.listdir(path_B)]
+    shutil.rmtree(path_A), shutil.rmtree(path_B), shutil.rmtree(path_AB)  # clean up
     return fid_AB, fid_A
 
 
@@ -106,5 +108,3 @@ def saveImage(img_id, path, sample):
         os.makedirs(os.path.join(path, 'channel%d' % c), exist_ok=True)
         file_path = os.path.join(path, 'channel%d' % c, '%d.jpg' % img_id)
         plt.imsave(file_path, sample[c], vmin=-1, vmax=1, cmap='gray')
-
-

@@ -15,9 +15,6 @@ model:
   norm: in_rs_aff
   use_batch_statistic: False
 logging:
-  wandb_entity: robert_jarolim
-  wandb_project: ITI
-  wandb_name: STEREO-To-SDO
-  wandb_id: null
+  project: ITI
 training:
   epochs: 100

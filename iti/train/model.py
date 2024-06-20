@@ -39,6 +39,7 @@ class GeneratorAB(nn.Module):
             self.down_blocks += [DownBlock(dim, 2 * dim, n_convs, **kwargs)]
             dim *= 2
             n_convs = n_convs + 1 if n_convs < 3 else 3
+        self.down_blocks = nn.ModuleList(self.down_blocks)
         ##################### Core #####################
         self.core_block = CoreBlock(dim, dim, 3, **kwargs)
         ##################### Decoder #####################
@@ -47,14 +48,16 @@ class GeneratorAB(nn.Module):
             self.up_blocks += [UpBlock(dim, dim // 2, n_convs, skip_connection=skip_connections, **kwargs)]
             dim //= 2
             n_convs = n_convs -1 if n_convs > 1 else 1
+        self.up_blocks = nn.ModuleList(self.up_blocks)
         ##################### Upsampling #####################
         self.sampling_blocks = []
         for _ in range(n_upsample):
             self.sampling_blocks += [UpBlock(dim, dim // 2, 1, skip_connection=False, **kwargs)]
             dim //= 2
+        self.sampling_blocks = nn.ModuleList(self.sampling_blocks)
+
         self.to_image = Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=kwargs['pad_type'])
 
-        self.model = nn.Sequential(self.from_image, *self.down_blocks, self.core_block, *self.up_blocks, *self.sampling_blocks, self.to_image)
 
     def forward(self, x):
         self.skip_connections = True
@@ -106,6 +109,7 @@ class GeneratorBA(nn.Module):
         for _ in range(n_downsample):
             self.sampling_blocks += [DownBlock(dim, dim * 2, 1, **kwargs)]
             dim *= 2
+        self.sampling_blocks = nn.ModuleList(self.sampling_blocks)
         ##################### Encoder #####################
         self.down_blocks = []
         n_convs = 1
@@ -113,6 +117,7 @@ class GeneratorBA(nn.Module):
             self.down_blocks += [DownBlock(dim, 2 * dim, n_convs, **kwargs)]
             dim *= 2
             n_convs = n_convs + 1 if n_convs < 3 else 3
+        self.down_blocks = nn.ModuleList(self.down_blocks)
         ##################### Noise #####################
         self.noise_blocks = []
         self.noise_blocks += [Conv2dBlock(noise_dim, dim, 7, 1, 3, **kwargs)]
@@ -127,9 +132,10 @@ class GeneratorBA(nn.Module):
             self.up_blocks += [UpBlock(dim, dim // 2, n_convs, skip_connection=skip_connections, **kwargs)]
             dim //= 2
             n_convs = n_convs - 1 if n_convs > 1 else 1
+        self.up_blocks = nn.ModuleList(self.up_blocks)
+
         self.to_image = Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation=output_activ, pad_type=kwargs['pad_type'])
 
-        self.model = nn.Sequential(self.from_image, *self.sampling_blocks, *self.down_blocks, self.noise_blocks, self.core_block, *self.up_blocks, self.to_image)
 
     def forward(self, image, noise):
         x = self.from_image(image)
@@ -159,7 +165,7 @@ class GeneratorBA(nn.Module):
     def forwardRandomNoise(self, image):
         n_gen = Variable(torch.rand(image.size(0), self.noise_dim,
                                     image.size(2) // 2 ** (self.depth_noise + self.n_downsample),
-                                    image.size(3) // 2 ** (self.depth_noise + self.n_downsample)).cuda())
+                                    image.size(3) // 2 ** (self.depth_noise + self.n_downsample)).to(image.device))
         return self.forward(image, noise=n_gen)
 
 

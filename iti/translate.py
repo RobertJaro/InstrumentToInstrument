@@ -1,9 +1,7 @@
-
 import os
 from contextlib import closing
 from multiprocessing.pool import Pool
 from pathlib import Path
-from typing import List, Tuple
 from urllib import request
 
 import astropy.units as u
@@ -19,7 +17,7 @@ from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEdi
 
 class InstrumentToInstrument:
     """
-    Core class for instrument to instrument translation.
+    Core class for instrument to instrument translation. Either model_name or model_path need to be provided.
 
     Args:
         model_name (str): Name of the model file.
@@ -29,7 +27,9 @@ class InstrumentToInstrument:
         patch_factor (int): Factor by which the image should be divided into patches.
         n_workers (int): Number of workers for the multiprocessing pool.
     """
-    def __init__(self, model_name, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
+
+    def __init__(self, model_name=None, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
+        assert model_name is not None or model_path is not None, 'Either model_name or model_path must be provided.'
         self.patch_factor = patch_factor
         self.depth_generator = depth_generator
         # Load Model
@@ -42,6 +42,10 @@ class InstrumentToInstrument:
         self.generator.eval()
         self.device = device
         self.n_workers = n_workers
+
+    def forward(self, tensor):
+        with torch.no_grad():
+            return self.generator(tensor.to(self.device)).detach().cpu().numpy()
 
     def translate(self, *args, **kwargs):
         raise NotImplementedError()
@@ -151,19 +155,6 @@ class InstrumentToInstrument:
         return new_meta
 
 
-class InstrumentConverter:
-
-    def _convertDataset(self, *datasets, n_workers=4) -> Tuple[np.ndarray, List]:
-        images = []
-        metas = []
-        with Pool(n_workers) as pool:
-            for data_sample in zip(*[pool.imap(ds.convertData, ds.data) for ds in datasets]):
-                #
-                images += [d for d, kwargs in data_sample]
-                metas += [kwargs for d, kwargs in data_sample]
-        return np.concatenate(images), metas
-
-
 class SOHOToSDO(InstrumentToInstrument):
     """
     SOHO to SDO translation of EUV and magnetogram observations.
@@ -171,6 +162,7 @@ class SOHOToSDO(InstrumentToInstrument):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='soho_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304], sdo_norms['mag']]
@@ -199,6 +191,7 @@ class SOHOToSDOEUV(SOHOToSDO):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='soho_to_sdo_euv_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
@@ -217,6 +210,7 @@ class STEREOToSDO(InstrumentToInstrument):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='stereo_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -249,6 +243,7 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='stereo_to_sdo_mag_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -290,11 +285,12 @@ class KSOLowToHigh(InstrumentToInstrument):
         model_name (str): Name of the model file.
         resolution (int): Resolution of the images.
     """
+
     def __init__(self, model_name='kso_low_to_high_v0_2.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
-    def translate(self, paths, return_arrays=False, **kwargs):
+    def translate(self, paths, return_arrays=True, **kwargs):
         ds = KSOFlatDataset(paths, self.resolution, **kwargs)
         for result, inputs, outputs in self._translateDataset(ds):
             if return_arrays:
@@ -311,6 +307,7 @@ class KSOFilmToCCD(InstrumentToInstrument):
         model_name (str): Name of the model file.
         resolution (int): Resolution of the images.
     """
+
     def __init__(self, model_name='kso_film_to_ccd_v0_1.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
@@ -331,6 +328,7 @@ class HMIToHinode(InstrumentToInstrument):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='hmi_to_hinode_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -342,29 +340,14 @@ class HMIToHinode(InstrumentToInstrument):
             yield s_map
 
 
-class KSOFlatConverter(InstrumentConverter):
-    """
-    KSO flat image converter.
-
-    Args:
-        resolution (int): Resolution of the images.
-    """
-    def __init__(self, resolution, **kwargs):
-        super().__init__(**kwargs)
-        self.resolution = resolution
-
-    def convert(self, paths):
-        ds = KSOFlatDataset(paths, self.resolution)
-        return self._convertDataset(ds)
-
-
-class PROBA2ToSDO(InstrumentToInstrument):
+class SWAPToAIA(InstrumentToInstrument):
     """
     PROBA2 SWAP to SDO AIA translation for image enhancement.
 
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='swap_to_aia_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -393,6 +376,7 @@ class SolarOrbiterToSDO(InstrumentToInstrument):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='fsi_to_aia_v0_3.pt', **kwargs):
         super().__init__(model_name, **kwargs)
         self.norms = [sdo_norms[171], sdo_norms[304]]
@@ -421,6 +405,7 @@ class SDOToSolarOrbiter(InstrumentToInstrument):
     Args:
         model_name (str): Name of the model file.
     """
+
     def __init__(self, model_name='aia_to_hri_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 

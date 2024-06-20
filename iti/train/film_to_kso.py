@@ -9,7 +9,8 @@ from iti.callback import PlotBAB, PlotABA, VariationPlotBA, HistoryCallback, Pro
     SaveCallback
 from iti.data.dataset import KSOFlatDataset, StorageDataset, KSOFilmDataset
 from iti.data.editor import RandomPatchEditor
-from iti.trainer import Trainer, loop
+from iti.trainer import Trainer
+from iti.train.util import loop
 
 parser = argparse.ArgumentParser(description='Train KSO Film-To-CCD translations')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')
