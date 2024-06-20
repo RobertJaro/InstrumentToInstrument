@@ -107,7 +107,7 @@ if __name__ == '__main__':
     end_date = args.end_date
     #base_path = '//'
 
-    download_util = Proba2Downloader(base_path=base_path)
+    download_util = PROBA2Downloader(base_path=base_path)
     start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
     end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
     num_months = (end_date_datetime.year - start_date_datetime.year) * 12 + (end_date_datetime.month - start_date_datetime.month)
