@@ -19,7 +19,8 @@ from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEdi
 
 class InstrumentToInstrument:
 
-    def __init__(self, model_name, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
+    def __init__(self, model_name=None, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
+        assert model_name is not None or model_path is not None, 'Either model_name or model_path must be provided.'
         self.patch_factor = patch_factor
         self.depth_generator = depth_generator
         # Load Model
