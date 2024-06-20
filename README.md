@@ -1,5 +1,5 @@
 ![](images/HinodeEnhanced_v2.jpg)
-# Instrument to Instrument Translation for Solar Observations
+# Instrument to Instrument Translation (ITI) for Solar Observations
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1nwXqT2SI1xqO1Vz9aYQeAadzriL7UFVM#scrollTo=k_WqPbLGYmea) [![Documentation Status](https://readthedocs.org/projects/iti-documentation/badge/?version=latest)](https://iti-documentation.readthedocs.io/en/latest/?badge=latest)
 
