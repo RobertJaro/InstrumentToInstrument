@@ -16,7 +16,7 @@ We demonstrate that our method can provide unified long-term data sets at the hi
 To install the ITI tool we recommend to use the [installation](https://iti-documentation.readthedocs.io/en/latest/installation/index.html) guide provided in the documentation.
 
 ## Usage
-To get started with the ITI tool we recommend to play around with the [examples](https://iti-documentation.readthedocs.io/en/latest/generated/gallery/index.html).
+To get started with the ITI tool we recommend to play around with the [example](https://iti-documentation.readthedocs.io/en/latest/generated/gallery/index.html) notebooks.
 
 ## Information
 For more information and a detailed description about the ITI tool please visit the [documentation](https://iti-documentation.readthedocs.io/en/latest/index.html).
