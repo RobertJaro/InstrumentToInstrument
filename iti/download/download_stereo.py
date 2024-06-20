@@ -16,7 +16,12 @@ from tqdm import tqdm
 
 
 class STEREODownloader:
+    """
+    Class to download STEREO SECCHI data from the VSO.
 
+    Args:
+        base_path (str): Path to the directory where the downloaded data should be stored.
+    """
     def __init__(self, base_path):
         self.base_path = base_path
         self.wavelengths = [304, 284, 195, 171]
@@ -24,6 +29,15 @@ class STEREODownloader:
         [os.makedirs(os.path.join(base_path, dir), exist_ok=True) for dir in self.dirs]
 
     def downloadDate(self, sample):
+        """
+        Download the data for the given date.
+
+        Args:
+            sample (tuple): Tuple containing the date and source information.
+
+        Returns:
+            list: List of paths to the downloaded files.
+        """
         date, source = sample
         files = []
         try:
@@ -36,6 +50,17 @@ class STEREODownloader:
             [os.remove(f) for f in files if os.path.exists(f)]
 
     def downloadSECCHI(self, query_date, wl, source):
+        """
+        Download the SECCHI data for the given date, wavelength and source.
+
+        Args:
+            query_date (datetime): The date for which the data should be downloaded.
+            wl (int): The wavelength of the data.
+            source (str): The source of the data.
+
+        Returns:
+            str: Path to the downloaded file.
+        """
         file_path = os.path.join(self.base_path, str(wl), "%s.fits" % query_date.isoformat("T", timespec='seconds'))
         if os.path.exists(file_path):
             return file_path  # skip existing downloads (e.g. retry)
@@ -67,10 +92,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Download STEREO data')
     parser.add_argument('--download_dir', type=str, help='path to the download directory.')
     parser.add_argument('--n_workers', type=str, help='number of parallel threads.', required=False, default=4)
+    parser.add_argument('--start_date', type=str, help='start date for the download.', required=False, default='2008-05-01')
+    parser.add_argument('--end_date', type=str, help='end date for the download.', required=False, default=str(datetime.now()).split(' ')[0])
 
     args = parser.parse_args()
     base_path = args.download_dir
     n_workers = args.n_workers
+    start_date = args.start_date
+    end_date = args.end_date
 
     drms_client = drms.Client(email='robert.jarolim@uni-graz.at', verbose=False)
     download_util = STEREODownloader(base_path)
@@ -83,10 +112,10 @@ if __name__ == '__main__':
     existing_dates = set(
         [os.path.basename(f).replace('.fits', '')[:10] for f in glob('/localdata/USER/rja/stereo_iti2021/**/*.fits')])
 
-    start_date = datetime(2008, 5, 1, 0, 0)
-    end_date = datetime.now()
-    num_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-    month_dates = [start_date + relativedelta(months=i) for i in range(num_months)]
+    start_date_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+    num_months = (end_date_datetime.year - start_date_datetime.year) * 12 + (end_date_datetime.month - start_date_datetime.month)
+    month_dates = [start_date_datetime + relativedelta(months=i) for i in range(num_months)]
     for date in month_dates:
         samples = []
         for i in range(((date + relativedelta(months=1)) - date).days):

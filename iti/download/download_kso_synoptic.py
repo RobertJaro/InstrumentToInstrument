@@ -7,6 +7,12 @@ import pandas as pd
 
 
 def searchHalpha(base_dir=""):
+    """
+    Search for Halpha files in the given directory and download them.
+
+    Args:
+        base_dir (str): The directory to search in.
+    """
     print("SEARCHING:", base_dir)
     files = ftp.nlst(base_dir)
     for file in files:
@@ -21,6 +27,15 @@ def searchHalpha(base_dir=""):
 
 
 def downloadFile(filename):
+    """
+    Download the given file.
+
+    Args:
+        filename (str): The name of the file to download.
+
+    Returns:
+        str: Path to the downloaded file.
+    """
     target_file_path = os.path.join(local_path, os.path.basename(filename))
     if os.path.exists(target_file_path):
         return

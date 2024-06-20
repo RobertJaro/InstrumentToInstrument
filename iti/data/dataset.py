@@ -19,16 +19,28 @@ from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiu
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \
     PassEditor, BrightestPixelPatchEditor, stereo_norms, LimbDarkeningCorrectionEditor, hinode_norms, gregor_norms, \
     LoadGregorGBandEditor, DistributeEditor, RecenterEditor, SECCHIPrepEditor, \
-    SOHOFixHeaderEditor, PaddingEditor, solo_norm, hri_norm, swap_norm, SWAPPrepEditor
+    SOHOFixHeaderEditor, PaddingEditor, hri_norm, proba2_norm, solo_norm
 
 
 class Norm(Enum):
+    """
+    Enum for normalization types
+    """
     CONTRAST = 'contrast'
     IMAGE = 'image'
     PEAK = 'adjusted'
     NONE = 'none'
 
+
 class ArrayDataset(Dataset):
+    """
+    Dataset for numpy arrays
+
+    Args:
+        data (np.array): Data
+        editors (List[Editor]): List of editors
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, editors: List[Editor], **kwargs):
         self.data = data
@@ -76,6 +88,18 @@ class ArrayDataset(Dataset):
 
 
 class BaseDataset(Dataset):
+    """
+    Base class for datasets
+
+    Args:
+        data (Union[str, list]): Data
+        editors (List[Editor]): List of editors
+        ext (str): File extension
+        limit (int): Limit of samples
+        months (list): List of months
+        date_parser: Date parser
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data: Union[str, list], editors: List[Editor], ext: str = None, limit: int = None,
                  months: list = None, date_parser=None, **kwargs):
@@ -134,6 +158,14 @@ class BaseDataset(Dataset):
 
 
 class StackDataset(BaseDataset):
+    """
+    Dataset for stacked data
+
+    Args:
+        data_sets (list): List of datasets
+        limit (int): Limit of samples
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data_sets, limit=None, **kwargs):
         self.data_sets = data_sets
@@ -146,6 +178,15 @@ class StackDataset(BaseDataset):
 
 
 class StorageDataset(Dataset):
+    """
+    Dataset for storing data to accelerate training
+
+    Args:
+        dataset (BaseDataset): Dataset
+        store_dir (str): Storage directory
+        ext_editors (list): List of editors
+    """
+
     def __init__(self, dataset: BaseDataset, store_dir, ext_editors=[]):
         self.dataset = dataset
         self.store_dir = store_dir
@@ -205,9 +246,27 @@ class StorageDataset(Dataset):
 
 
 def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, ext=None, basenames=None, **kwargs):
+    """
+    Get intersecting files from multiple directories
+
+    Args:
+        path (str): Path to directories
+        dirs (list): List of directories
+        months (list): List of months
+        years (list): List of years
+        n_samples (int): Number of samples
+        ext (str): File extension
+        basenames (list): List of basenames
+        **kwargs: Additional arguments
+
+    Returns:
+        list: List of intersecting files
+    """
     pattern = '*' if ext is None else '*' + ext
     if basenames is None:
-        basenames = [[os.path.basename(path) for path in glob.glob(os.path.join(path, str(d), '**', pattern), recursive=True)] for d in dirs]
+        basenames = [
+            [os.path.basename(path) for path in glob.glob(os.path.join(path, str(d), '**', pattern), recursive=True)]
+            for d in dirs]
         basenames = list(set(basenames[0]).intersection(*basenames))
     if months:  # assuming filename is parsable datetime
         basenames = [bn for bn in basenames if parse(bn.split('.')[0]).month in months]
@@ -220,6 +279,17 @@ def get_intersecting_files(path, dirs, months=None, years=None, n_samples=None, 
 
 
 class SDODataset(StackDataset):
+    """
+    Dataset for SDO data
+
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        wavelengths (list): List of wavelengths
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, patch_shape=None, wavelengths=None, resolution=2048, ext='.fits', **kwargs):
         wavelengths = [171, 193, 211, 304, 6173, ] if wavelengths is None else wavelengths
@@ -229,8 +299,7 @@ class SDODataset(StackDataset):
             paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
         ds_mapping = {171: AIADataset, 193: AIADataset, 211: AIADataset, 304: AIADataset, 6173: HMIDataset}
         data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
-                         for wl_id, files in zip(wavelengths, paths)]
-
+                     for wl_id, files in zip(wavelengths, paths)]
 
         super().__init__(data_sets, **kwargs)
         if patch_shape is not None:
@@ -238,6 +307,17 @@ class SDODataset(StackDataset):
 
 
 class SOHODataset(StackDataset):
+    """
+    Dataset for SOHO data
+
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        wavelengths (list): List of wavelengths
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, patch_shape=None, resolution=1024, ext='.fits', wavelengths=None, **kwargs):
         wavelengths = [171, 195, 284, 304, 'mag', ] if wavelengths is None else wavelengths
@@ -256,6 +336,15 @@ class SOHODataset(StackDataset):
 
 
 class STEREODataset(StackDataset):
+    """
+    Dataset for STEREO data
+
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        resolution (int): Resolution
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, patch_shape=None, resolution=1024, **kwargs):
         if isinstance(data, list):
@@ -273,6 +362,16 @@ class STEREODataset(StackDataset):
 
 
 class EITDataset(BaseDataset):
+    """
+    Dataset for SOHO/EIT data
+
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, wavelength, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[wavelength]
@@ -288,6 +387,16 @@ class EITDataset(BaseDataset):
 
 
 class MDIDataset(BaseDataset):
+    """
+    Dataset for SOHO/MDI data
+
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, resolution=1024, ext='.fits', **kwargs):
         norm = soho_norms[6173]
@@ -303,6 +412,17 @@ class MDIDataset(BaseDataset):
 
 
 class AIADataset(BaseDataset):
+    """
+    Dataset for SDO/AIA data
+
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        calibration (str): Calibration type
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, wavelength, resolution=2048, ext='.fits', calibration='auto', **kwargs):
         norm = sdo_norms[wavelength]
@@ -317,6 +437,16 @@ class AIADataset(BaseDataset):
 
 
 class HMIDataset(BaseDataset):
+    """
+    Dataset for SDO/HMI data
+
+    Args:
+        data: Data
+        id (int): ID
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, id, resolution=2048, ext='.fits', **kwargs):
         norm = sdo_norms[id]
@@ -333,6 +463,14 @@ class HMIDataset(BaseDataset):
 
 
 class HMIContinuumDataset(BaseDataset):
+    """
+    Dataset for SDO/HMI continuum data
+
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, patch_shape=None, **kwargs):
         norm = sdo_norms['continuum']
@@ -349,6 +487,14 @@ class HMIContinuumDataset(BaseDataset):
 
 
 class SDOMLDataset(BaseDataset):
+    """
+    Dataset for SDO/ML data
+
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, wavelength, resolution=2048, ext='.fits', **kwargs):
         norm = sdo_norms[wavelength]
@@ -361,7 +507,17 @@ class SDOMLDataset(BaseDataset):
                    ReshapeEditor((1, resolution, resolution))]
         super().__init__(data, editors=editors, ext=ext, **kwargs)
 
+
 class HinodeDataset(BaseDataset):
+    """
+    Dataset for Hinode data
+
+    Args:
+        data: Data
+        scale (float): Scale
+        wavelength (str): Wavelength
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, scale=0.15, wavelength='continuum', **kwargs):
         norm = hinode_norms[wavelength]
@@ -377,8 +533,18 @@ class HinodeDataset(BaseDataset):
 
 
 class SECCHIDataset(BaseDataset):
+    """
+    Dataset for STEREO/SECCHI data
 
-    def __init__(self, data, wavelength, resolution=1024, degradation=None,**kwargs):
+    Args:
+        data: Data
+        wavelength (int): Wavelength
+        resolution (int): Resolution
+        degradation (list): Degradation
+        **kwargs: Additional arguments
+    """
+
+    def __init__(self, data, wavelength, resolution=1024, degradation=None, **kwargs):
         norm = stereo_norms[wavelength]
 
         editors = [LoadMapEditor(),
@@ -391,6 +557,15 @@ class SECCHIDataset(BaseDataset):
 
 
 class KSODataset(BaseDataset):
+    """
+    Dataset for KSO data
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data: Union[str, list], resolution=256, ext=".fts.gz", **kwargs):
         editors = [LoadMapEditor(),
@@ -403,6 +578,16 @@ class KSODataset(BaseDataset):
 
 
 class KSOFlatDataset(BaseDataset):
+    """
+    Dataset for KSO flat data including limb darkening correction
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        date_parser: Date parser
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, resolution=256, ext=".fts.gz", date_parser=None, **kwargs):
         editors = [LoadMapEditor(),
@@ -419,6 +604,16 @@ class KSOFlatDataset(BaseDataset):
 
 
 class KSOFilmDataset(BaseDataset):
+    """
+    Dataset for KSO film data
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        date_parser: Date parser
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, resolution=256, ext=".fts.gz", date_parser=None, **kwargs):
         editors = [LoadFITSEditor(),
@@ -435,6 +630,15 @@ class KSOFilmDataset(BaseDataset):
 
 
 class GregorDataset(BaseDataset):
+    """
+    Dataset for GREGOR data
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, ext='.fts', **kwargs):
         norm = gregor_norms['gband']
@@ -448,6 +652,14 @@ class GregorDataset(BaseDataset):
 
 
 class ZerosDataset(Dataset):
+    """
+    Dataset for zeros
+
+    Args:
+        length (int): Length
+        resolution (int): Resolution
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, length, resolution=1024, **kwargs):
         self.shape = (1, resolution, resolution)
@@ -462,17 +674,27 @@ class ZerosDataset(Dataset):
         return np.zeros(self.shape)
 
 
-
 class EUIDataset(StackDataset):
+    """
+    Stacked Dataset for Solar Orbiter/EUI Full Sun Imager (FSI) data
+
+    Args:
+        data: Data
+        patch_shape (tuple): Patch shape
+        wavelengths (list): List of wavelengths
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
 
     def __init__(self, data, patch_shape=None, wavelengths=None, resolution=1024, ext='.fits', **kwargs):
-        wavelengths = [174, 304] if wavelengths is None else wavelengths
+        wavelengths = ['eui-fsi174-image', 'eui-fsi304-image'] if wavelengths is None else wavelengths
         if isinstance(data, list):
             paths = data
         else:
             paths = get_intersecting_files(data, wavelengths, ext=ext, **kwargs)
-        ds_mapping = {174: FSIDataset, 304: FSIDataset}
-        data_sets = [ds_mapping[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
+        ds = {'eui-fsi174-image': FSIDataset, 'eui-fsi304-image': FSIDataset}
+        data_sets = [ds[wl_id](files, wavelength=wl_id, resolution=resolution, ext=ext)
                      for wl_id, files in zip(wavelengths, paths)]
 
         super().__init__(data_sets, **kwargs)
@@ -481,7 +703,18 @@ class EUIDataset(StackDataset):
 
 
 class FSIDataset(BaseDataset):
-    def __init__(self, data, wavelength=304, resolution=1024, ext='.fits', **kwargs):
+    """
+    Dataset for Solar Orbiter/EUI Full Sun Imager (FSI) data
+
+    Args:
+        data: Data
+        wavelength (str): Wavelength
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
+
+    def __init__(self, data, wavelength, resolution=1024, ext='.fits', **kwargs):
         norm = solo_norm[wavelength]
 
         editors = [LoadMapEditor(),
@@ -493,24 +726,43 @@ class FSIDataset(BaseDataset):
 
 
 class HRIDataset(BaseDataset):
-    def __init__(self, data, ext='.fits', **kwargs):
+    """
+    Dataset for Solar Orbiter/EUI High Resolution Imager (HRI) data
+
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
+
+    def __init__(self, data, resolution=4096, ext='.fits', **kwargs):
         norm = hri_norm[174]
 
         editors = [LoadMapEditor(),
-                   NormalizeRadiusEditor(resolution=8192, crop=True, rotate_north_up=False, fix_irradiance_with_distance=True),
+                   NormalizeRadiusEditor(resolution=resolution, crop=True, rotate_north_up=False,
+                                         fix_irradiance_with_distance=True),
                    MapToDataEditor(),
                    NormalizeEditor(norm),
                    ExpandDimsEditor()]
         super().__init__(data, editors=editors, ext=ext, **kwargs)
 
 
+class SWAPDataset(BaseDataset):
+    """
+    Dataset for PROBA2/SWAP data
 
-class Proba2Dataset(BaseDataset):
+    Args:
+        data: Data
+        resolution (int): Resolution
+        ext (str): File extension
+        **kwargs: Additional arguments
+    """
+
     def __init__(self, data, wavelength=174, patch_shape=None, resolution=1024, ext='.fits', **kwargs):
-        norm = swap_norm[wavelength]
+        norm = proba2_norm[wavelength]
 
         editors = [LoadMapEditor(),
-                   SWAPPrepEditor(degradation=[-3.37591548e-05, 1.50555178e+00]),
                    NormalizeRadiusEditor(resolution),
                    MapToDataEditor(),
                    NormalizeEditor(norm),

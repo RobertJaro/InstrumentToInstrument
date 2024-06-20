@@ -2,7 +2,6 @@ import os
 from contextlib import closing
 from multiprocessing.pool import Pool
 from pathlib import Path
-from typing import List, Tuple
 from urllib import request
 
 import astropy.units as u
@@ -12,12 +11,22 @@ from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
 from iti.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset, \
-    HinodeDataset
-from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor, LoadMapEditor, ScaleEditor, \
-    NormalizeExposureEditor, MapToDataEditor
+    SWAPDataset, EUIDataset, AIADataset
+from iti.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor, hri_norm
 
 
 class InstrumentToInstrument:
+    """
+    Core class for instrument to instrument translation. Either model_name or model_path need to be provided.
+
+    Args:
+        model_name (str): Name of the model file.
+        model_path (str): Path to the model file.
+        device (torch.device): Device on which the model should be loaded.
+        depth_generator (int): Depth of the generator network.
+        patch_factor (int): Factor by which the image should be divided into patches.
+        n_workers (int): Number of workers for the multiprocessing pool.
+    """
 
     def __init__(self, model_name=None, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
         assert model_name is not None or model_path is not None, 'Either model_name or model_path must be provided.'
@@ -147,6 +156,12 @@ class InstrumentToInstrument:
 
 
 class SOHOToSDO(InstrumentToInstrument):
+    """
+    SOHO to SDO translation of EUV and magnetogram observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='soho_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -170,6 +185,12 @@ class SOHOToSDO(InstrumentToInstrument):
 
 
 class SOHOToSDOEUV(SOHOToSDO):
+    """
+    SOHO to SDO translation of EUV observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='soho_to_sdo_euv_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -183,6 +204,12 @@ class SOHOToSDOEUV(SOHOToSDO):
 
 
 class STEREOToSDO(InstrumentToInstrument):
+    """
+    STEREO to SDO translation of EUV observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='stereo_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -210,6 +237,12 @@ class STEREOToSDO(InstrumentToInstrument):
 
 
 class STEREOToSDOMagnetogram(InstrumentToInstrument):
+    """
+    STEREO to SDO magnetogram translation
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='stereo_to_sdo_mag_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -245,6 +278,14 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
 
 class KSOLowToHigh(InstrumentToInstrument):
+    """
+    KSO image enhancement translation.
+
+    Args:
+        model_name (str): Name of the model file.
+        resolution (int): Resolution of the images.
+    """
+
     def __init__(self, model_name='kso_low_to_high_v0_2.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
@@ -259,6 +300,14 @@ class KSOLowToHigh(InstrumentToInstrument):
 
 
 class KSOFilmToCCD(InstrumentToInstrument):
+    """
+    KSO film to CCD translation.
+
+    Args:
+        model_name (str): Name of the model file.
+        resolution (int): Resolution of the images.
+    """
+
     def __init__(self, model_name='kso_film_to_ccd_v0_1.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
@@ -273,6 +322,13 @@ class KSOFilmToCCD(InstrumentToInstrument):
 
 
 class HMIToHinode(InstrumentToInstrument):
+    """
+    SDO HMI to Hinode translation.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
+
     def __init__(self, model_name='hmi_to_hinode_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -285,8 +341,14 @@ class HMIToHinode(InstrumentToInstrument):
 
 
 class SWAPToAIA(InstrumentToInstrument):
+    """
+    PROBA2 SWAP to SDO AIA translation for image enhancement.
 
-    def __init__(self, model_name='swap_to_aia_v0_1.pt', **kwargs):
+    Args:
+        model_name (str): Name of the model file.
+    """
+
+    def __init__(self, model_name='swap_to_aia_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
     def translate(self, paths):
@@ -305,3 +367,51 @@ class SWAPToAIA(InstrumentToInstrument):
         new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
         new_meta['waveunit'] = 'angstrom'
         return new_meta
+
+
+class SolarOrbiterToSDO(InstrumentToInstrument):
+    """
+    Solar Orbiter FSI to SDO AIA translation for instrument intercalibration.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
+
+    def __init__(self, model_name='fsi_to_aia_v0_3.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+        self.norms = [sdo_norms[171], sdo_norms[304]]
+
+    def translate(self, path, basenames=None, **kwargs):
+        eui_dataset = EUIDataset(path, basenames=basenames, **kwargs)
+        for maps, img, iti_img in self._translateDataset(eui_dataset):
+            yield [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instr))
+                   for s_map, norm, instr in zip(maps, self.norms, ['AIA'] * 2)]
+
+    def toSDOMeta(self, meta, instrument):
+        wl_map = {174: 171, 304: 304}
+        new_meta = meta.copy()
+        new_meta['obsrvtry'] = 'FSI-to-AIA'
+        new_meta['telescop'] = 'sdo'
+        new_meta['instrume'] = instrument
+        new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
+        new_meta['waveunit'] = 'angstrom'
+        return new_meta
+
+
+class SDOToSolarOrbiter(InstrumentToInstrument):
+    """
+    SDO AIA to Solar Orbiter HRI translation to obtain super-resolution observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
+
+    def __init__(self, model_name='aia_to_hri_v0_1.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+
+    def translate(self, paths):
+        ds = AIADataset(paths, wavelength=171)
+        for s_map, input, output in self._translateDataset(ds):
+            norm = hri_norm[174]
+            s_map = Map(norm.inverse((s_map.data + 1) / 2), s_map.meta)
+            yield s_map

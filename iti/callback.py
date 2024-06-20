@@ -11,7 +11,17 @@ from iti.iti import ITIModule
 
 
 class BasicPlot(pl.Callback):
+    """
+    Basic plot callback for visualization of the data and the model predictions.
 
+    Args:
+        data (Dataset): Data to visualize.
+        model (ITIModule): Model to use.
+        plot_id (str): Plot id.
+        plot_settings (list): List of plot settings.
+        dpi (int): Dots per inch.
+        batch_size (int): Batch size.
+    """
     def __init__(self, data, model: ITIModule, plot_id, plot_settings, dpi=100, batch_size=None, **kwargs):
         self.data = data
         self.model = model
@@ -64,6 +74,18 @@ class BasicPlot(pl.Callback):
 
 
 class PlotABA(BasicPlot):
+    """
+    Plot callback for visualization of the data and the model predictions for the translation Instrument A -> Instrument B -> Instrument A.
+
+    Args:
+        data (Dataset): Data to visualize.
+        model (ITIModule): Model to use.
+        plot_settings_A (dict or list): Plot settings for Instrument A.
+        plot_settings_B (dict or list): Plot settings for Instrument B.
+        plot_id (str): Plot id.
+        dpi (int): Dots per inch.
+        batch_size (int): Batch size.
+    """
     def __init__(self, data, model, plot_settings_A=None, plot_settings_B=None, plot_id="ABA",
                  **kwargs):
         plot_settings_A = plot_settings_A if plot_settings_A is not None else [{"cmap": "gray"}] * model.input_dim_a
@@ -83,6 +105,18 @@ class PlotABA(BasicPlot):
 
 
 class PlotBAB(BasicPlot):
+    """
+    Plot callback for visualization of the data and the model predictions for the translation Instrument B -> Instrument A -> Instrument B.
+
+    Args:
+        data (Dataset): Data to visualize.
+        model (ITIModule): Model to use.
+        plot_settings_A (dict or list): Plot settings for Instrument A.
+        plot_settings_B (dict or list): Plot settings for Instrument B.
+        plot_id (str): Plot id.
+        dpi (int): Dots per inch.
+        batch_size (int): Batch size.
+    """
     def __init__(self, data, model, plot_settings_A=None, plot_settings_B=None, plot_id="BAB",
                  **kwargs):
         plot_settings_A = plot_settings_A if plot_settings_A is not None else [{"cmap": "gray"}] * model.input_dim_a
@@ -107,6 +141,18 @@ class PlotBAB(BasicPlot):
 
 
 class PlotAB(BasicPlot):
+    """
+    Plot callback for visualization of the data and the model predictions for the translation Instrument A -> Instrument B.
+
+    Args:
+        data (Dataset): Data to visualize.
+        model (ITIModule): Model to use.
+        plot_settings_A (dict or list): Plot settings for Instrument A.
+        plot_settings_B (dict or list): Plot settings for Instrument B.
+        plot_id (str): Plot id.
+        dpi (int): Dots per inch.
+        batch_size (int): Batch size.
+    """
     def __init__(self, data, model, plot_settings_A=None, plot_settings_B=None, plot_id="AB",
                  **kwargs):
         plot_settings_A = plot_settings_A if plot_settings_A is not None else [{"cmap": "gray"}] * model.input_dim_a
@@ -126,7 +172,19 @@ class PlotAB(BasicPlot):
 
 
 class VariationPlotBA(BasicPlot):
+    """
+    Plot callback for visualization of the data and the model predictions for the variation Instrument B -> Instrument A.
 
+    Args:
+        data (Dataset): Data to visualize.
+        model (ITIModule): Model to use.
+        n_samples (int): Number of samples.
+        plot_settings_A (dict or list): Plot settings for Instrument A.
+        plot_settings_B (dict or list): Plot settings for Instrument B.
+        plot_id (str): Plot id.
+        dpi (int): Dots per inch.
+        batch_size (int): Batch size.
+    """
     def __init__(self, data, model, n_samples, plot_settings_A=None, plot_settings_B=None, plot_id="variation",
                  **kwargs):
         self.n_samples = n_samples
@@ -149,6 +207,12 @@ class VariationPlotBA(BasicPlot):
 
 
 class SaveCallback(pl.Callback):
+    """
+    Callback to save the model state and the generator weights.
+
+    Args:
+        checkpoint_dir (str): Directory to save the checkpoints.
+    """
     def __init__(self, checkpoint_dir):
         self.checkpoint_dir = checkpoint_dir
         super().__init__()

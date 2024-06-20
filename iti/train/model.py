@@ -14,6 +14,19 @@ class DiscriminatorMode(Enum):
 
 ########################## Generator ##################################
 class GeneratorAB(nn.Module):
+    """
+    Generator for the translation Instrument_A to Instrument_B.
+
+    Args:
+        input_dim (int): Number of input channels.
+        output_dim (int): Number of output channels.
+        depth (int): Depth of the network.
+        n_upsample (int): Number of upsampling layers.
+        dim (int): Number of filters in the first layer.
+        output_activ (str): Activation function for the output layer.
+        skip_connections (bool): Use skip connections.
+        **kwargs: Additional arguments.
+    """
     def __init__(self, input_dim, output_dim, depth, n_upsample, dim=64, output_activ='tanh', skip_connections=True, **kwargs):
         super().__init__()
         self.depth = depth
@@ -69,6 +82,19 @@ class GeneratorAB(nn.Module):
         return x
 
 class GeneratorBA(nn.Module):
+    """
+    Generator for the translation Instrument_B to Instrument_A.
+
+    Args:
+        input_dim (int): Number of input channels.
+        output_dim (int): Number of output channels.
+        depth (int): Depth of the network.
+        n_downsample (int): Number of downsampling layers.
+        dim (int): Number of filters in the first layer.
+        output_activ (str): Activation function for the output layer.
+        skip_connections (bool): Use skip connections.
+        **kwargs: Additional arguments.
+    """
     def __init__(self, input_dim, output_dim, noise_dim, depth, depth_noise, n_downsample, dim=64, output_activ='tanh', skip_connections=True, **kwargs):
         super().__init__()
         self.depth = depth
@@ -144,6 +170,18 @@ class GeneratorBA(nn.Module):
 
 
 class Discriminator(nn.Module):
+    """
+    Discriminator for the ITI model.
+
+    Args:
+        input_dim (int): Number of input channels.
+        n_filters (int): Number of filters in the first layer.
+        num_scales (int): Number of scales.
+        depth_discriminator (int): Depth of the discriminator.
+        discriminator_mode (DiscriminatorMode): Discriminator mode.
+        norm (str): Normalization.
+        batch_statistic (bool): Use batch statistic.
+    """
     def __init__(self, input_dim, n_filters, num_scales=3, depth_discriminator=4,
                  discriminator_mode=DiscriminatorMode.SINGLE,
                  norm='in_rs_aff', batch_statistic=False):
@@ -283,6 +321,16 @@ class Discriminator(nn.Module):
 ########################## Encoder / Decoder ##########################
 
 class NoiseEstimator(nn.Module):
+    """
+    Noise estimator for the ITI model.
+
+    Args:
+        input_dim (int): Number of input channels.
+        noise_dim (int): Number of noise channels.
+        depth (int): Depth of the network.
+        dim (int): Number of filters in the first layer.
+        **kwargs: Additional arguments.
+    """
     def __init__(self, input_dim, dim, noise_dim, depth, **kwargs):
         super().__init__()
 
@@ -298,7 +346,15 @@ class NoiseEstimator(nn.Module):
         return self.model(x)
 
 class DownBlock(nn.Module):
+    """
+    Down sampling block for the ITI model.
 
+    Args:
+        dim (int): Number of input channels.
+        out_dim (int): Number of output channels.
+        n_convs (int): Number of convolution blocks.
+        **kwargs: Additional arguments.
+    """
     def __init__(self, dim, out_dim, n_convs, **kwargs):
         super().__init__()
         assert n_convs >= 1, 'Invalid configuration, requires at least 1 convolution block'
@@ -314,7 +370,16 @@ class DownBlock(nn.Module):
 
 
 class UpBlock(nn.Module):
+    """
+    Up sampling block for the ITI model.
 
+    Args:
+        in_dim (int): Number of input channels.
+        out_dim (int): Number of output channels.
+        n_convs (int): Number of convolution blocks.
+        skip_connection (bool): Use skip connections.
+        **kwargs: Additional arguments.
+    """
     def __init__(self, in_dim, out_dim, n_convs, skip_connection=True, **kwargs):
         super().__init__()
         assert n_convs >= 1, 'Invalid configuration, requires at least 1 convolution block'
@@ -332,7 +397,14 @@ class UpBlock(nn.Module):
         return x
 
 class CoreBlock(nn.Module):
+    """
+    Core block (bottleneck block) for the ITI model.
 
+    Args:
+        in_dim (int): Number of input channels.
+        out_dim (int): Number of output channels.
+        **kwargs: Additional arguments.
+    """
     def __init__(self, in_dim, out_dim, n_convs, **kwargs):
         super().__init__()
         assert n_convs > 1, 'Invalid configuration, requires at least 1 convolution block'
@@ -345,6 +417,20 @@ class CoreBlock(nn.Module):
 
 
 class Conv2dBlock(nn.Module):
+    """
+    Convolutional block for the ITI model.
+
+    Args:
+        input_dim (int): Number of input channels.
+        output_dim (int): Number of output channels.
+        kernel_size (int): Kernel size.
+        stride (int): Stride.
+        padding (int): Padding.
+        norm (str): Normalization.
+        activation (str): Activation function.
+        pad_type (str): Padding type.
+        transpose (bool): Use transposed convolution.
+    """
     def __init__(self, input_dim, output_dim, kernel_size, stride,
                  padding=0, norm='none', activation='relu', pad_type='zero', transpose=False):
         super().__init__()
@@ -421,6 +507,11 @@ class SpectralNorm(nn.Module):
     """
     Based on the paper "Spectral Normalization for Generative Adversarial Networks" by Takeru Miyato, Toshiki Kataoka, Masanori Koyama, Yuichi Yoshida
     and the Pytorch implementation https://github.com/christiancosgrove/pytorch-spectral-normalization-gan
+
+    Args:
+        module (nn.Module): Module to apply spectral normalization.
+        name (str): Name of the weight parameter.
+        power_iterations (int): Number of iterations to calculate the spectral norm.
     """
 
     def __init__(self, module, name='weight', power_iterations=1):
@@ -477,7 +568,9 @@ class SpectralNorm(nn.Module):
         return self.module.forward(*args)
 
 class BatchStatistic(nn.Module):
-
+    """
+    Batch statistic layer for the ITI model.
+    """
     def __init__(self):
         super().__init__()
 
@@ -487,4 +580,14 @@ class BatchStatistic(nn.Module):
                           torch.std(x, [0, 2, 3], keepdim=True) * torch.ones_like(x)], 1)
 
 def l2normalize(v, eps=1e-12):
+    """
+    L2 normalization.
+
+    Args:
+        v (torch.Tensor): Input tensor.
+        eps (float): Epsilon.
+
+    Returns:
+        torch.Tensor: Normalized tensor.
+    """
     return v / (v.norm() + eps)
