@@ -12,5 +12,11 @@ Here we provide a general method that translates between image domains of differ
 
 We demonstrate that our method can provide unified long-term data sets at the highest quality, by applying it to ground- and space-based solar observations.
 
-## Documentation
-The documentation can be found [here](https://iti-documentation.readthedocs.io/en/latest/?badge=latest). It contains a detailed description of the framework and the usage of the code, including the installation, examples and how to translate your own data.
+## Installation
+To install the ITI tool we recommend to use the [installation](https://iti-documentation.readthedocs.io/en/latest/installation/index.html) guide provided in the documentation.
+
+## Usage
+To get started with the ITI tool we recommend to play around with the [examples](https://iti-documentation.readthedocs.io/en/latest/generated/gallery/index.html).
+
+## Information
+For more information and a detailed description about the ITI tool please visit the [documentation](https://iti-documentation.readthedocs.io/en/latest/index.html).
