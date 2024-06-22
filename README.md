@@ -12,7 +12,7 @@ We demonstrate that the available data sets can directly profit from the most re
 We demonstrate that our method can provide unified long-term data sets at the highest quality, by applying it to ground- and space-based solar observations.
 
 ## Installation
-To install the ITI tool we recommend to use the [installation](https://iti-documentation.readthedocs.io/en/latest/installation/index.html) guide provided in the documentation.
+To install the `ITI` tool we recommend to use the [installation](https://iti-documentation.readthedocs.io/en/latest/installation/index.html) guide provided in the documentation.
 
 ## Usage
 To get started with the `ITI` we recommend to play around with the [example](https://iti-documentation.readthedocs.io/en/latest/generated/gallery/index.html) notebooks.
