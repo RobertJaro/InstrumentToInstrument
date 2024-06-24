@@ -18,7 +18,7 @@ from lightning.pytorch.loggers import WandbLogger
 from sunpy.visualization.colormaps import cm
 
 from iti.callback import SaveCallback, PlotBAB, PlotABA
-from iti.data.dataset import AIADataset, StorageDataset, Proba2Dataset
+from iti.data.dataset import AIADataset, StorageDataset, SWAPDataset
 from iti.data.data_module import ITIDataModule
 from iti.data.editor import RandomPatchEditor, BrightestPixelPatchEditor
 from iti.iti import ITIModule
@@ -53,13 +53,13 @@ sdo_dataset = StorageDataset(sdo_dataset,
                              sdo_converted_path,
                              ext_editors=[RandomPatchEditor((256, 256))])
 
-swap_dataset = Proba2Dataset(swap_path, months=train_months)
+swap_dataset = SWAPDataset(swap_path, months=train_months)
 swap_dataset = StorageDataset(swap_dataset, swap_converted_path,
                                 ext_editors=[RandomPatchEditor((128, 128))])
 
 sdo_valid = StorageDataset(AIADataset(sdo_path, wavelength=171, months=test_months, limit=100),
                            sdo_converted_path, ext_editors=[RandomPatchEditor((256, 256))])
-swap_valid = StorageDataset(Proba2Dataset(swap_path, months=test_months, limit=100),
+swap_valid = StorageDataset(SWAPDataset(swap_path, months=test_months, limit=100),
                               swap_converted_path, ext_editors=[RandomPatchEditor((128, 128))])
 
 data_module = ITIDataModule(swap_dataset, sdo_dataset, swap_valid, sdo_valid, **config['data'])
