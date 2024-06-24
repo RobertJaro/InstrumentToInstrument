@@ -5,10 +5,10 @@ import sys
 
 from sunpy.visualization.colormaps import cm
 
-from iti.data.dataset import SDODataset, SOHODataset, StorageDataset
-from iti.data.editor import RandomPatchEditor
-from iti.train.model import DiscriminatorMode
-from iti.trainer import Trainer
+from itipy.data.dataset import SDODataset, SOHODataset, StorageDataset
+from itipy.data.editor import RandomPatchEditor
+from itipy.train.model import DiscriminatorMode
+from itipy.trainer import Trainer
 
 parser = argparse.ArgumentParser(description='Ablation study training SOHO-To-SDO translations')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')

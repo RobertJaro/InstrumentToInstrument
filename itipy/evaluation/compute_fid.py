@@ -5,13 +5,12 @@ import matplotlib.pyplot as plt
 import torch
 from pytorch_fid.fid_score import compute_statistics_of_path, calculate_frechet_distance
 from pytorch_fid.inception import InceptionV3
-from sklearn.externals._pilutil import toimage
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from iti.train.model import GeneratorAB
-from iti.trainer import skip_invalid
+from itipy.train.model import GeneratorAB
+from itipy.trainer import skip_invalid
 
 def calculate_fid_given_paths(paths, batch_size, device, dims):
     """Calculates the FID of two paths"""

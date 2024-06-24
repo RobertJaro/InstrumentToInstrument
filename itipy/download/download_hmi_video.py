@@ -2,7 +2,7 @@ import argparse
 import datetime
 from datetime import timedelta
 
-from iti.download.download_hmi_continuum import HMIContinuumDownloader
+from itipy.download.download_hmi_continuum import HMIContinuumDownloader
 
 parser = argparse.ArgumentParser(description='Download SDO/HMI data for video')
 parser.add_argument('--download_dir', type=str, help='path to the download directory.')

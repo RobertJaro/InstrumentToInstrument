@@ -1,6 +1,6 @@
-from iti.data.dataset import SDODataset, SOHODataset
-from iti.train.model import DiscriminatorMode
-from iti.trainer import Trainer
+from itipy.data.dataset import SDODataset, SOHODataset
+from itipy.train.model import DiscriminatorMode
+from itipy.trainer import Trainer
 
 base_dir = "<<path for training results>>"
 sdo_data_path = "<<data set B>>"

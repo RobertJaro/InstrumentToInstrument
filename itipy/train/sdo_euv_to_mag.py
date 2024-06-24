@@ -4,10 +4,10 @@ import os
 
 from sunpy.visualization.colormaps import cm
 
-from iti.data.dataset import SDODataset, StorageDataset
-from iti.data.editor import SliceEditor
-from iti.train.model import DiscriminatorMode
-from iti.trainer import Trainer
+from itipy.data.dataset import SDODataset, StorageDataset
+from itipy.data.editor import SliceEditor
+from itipy.train.model import DiscriminatorMode
+from itipy.trainer import Trainer
 
 parser = argparse.ArgumentParser(description='Train SDO EUV-To-magnetogram translations (signed)')
 parser.add_argument('--base_dir', type=str, help='path to the results directory.')

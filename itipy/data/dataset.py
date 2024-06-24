@@ -14,7 +14,7 @@ from dateutil.parser import parse
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from iti.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
+from itipy.data.editor import Editor, LoadMapEditor, KSOPrepEditor, NormalizeRadiusEditor, \
     MapToDataEditor, ImageNormalizeEditor, ReshapeEditor, sdo_norms, NormalizeEditor, \
     AIAPrepEditor, RemoveOffLimbEditor, StackEditor, soho_norms, NanEditor, LoadFITSEditor, \
     KSOFilmPrepEditor, ScaleEditor, ExpandDimsEditor, FeaturePatchEditor, EITCheckEditor, NormalizeExposureEditor, \

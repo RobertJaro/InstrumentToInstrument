@@ -7,7 +7,7 @@ from dateutil.parser import parse
 from sunpy.map import Map
 from tqdm import tqdm
 
-from iti.download.download_sdo import SDODownloader
+from itipy.download.download_sdo import SDODownloader
 
 parser = argparse.ArgumentParser(description='Download SDO data aligned with SOHO observations')
 parser.add_argument('--download_dir', type=str, help='path to the download directory.')

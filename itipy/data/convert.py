@@ -1,4 +1,4 @@
-from iti.data.dataset import HMIContinuumDataset, StorageDataset, HinodeDataset, SDODataset, SOHODataset, STEREODataset, \
+from itipy.data.dataset import HMIContinuumDataset, StorageDataset, HinodeDataset, SDODataset, SOHODataset, STEREODataset, \
     get_intersecting_files
 
 if __name__ == '__main__':

@@ -21,12 +21,7 @@ https://colab.research.google.com/github/RobertJaro/InstrumentToInstrument/blob/
 
 For your local environment use pip:
 ``
-pip install iti
-``
-
-or the conda installation:
-``
-conda install iti -c conda-forge
+pip install itipy
 ``
 
 For GPU support follow the installation instructions of pytorch: https://pytorch.org/get-started/locally/
@@ -60,11 +55,14 @@ In the example bellow we implement a custom data set for HMI magnetograms that:
 
 The editors are listed in ``iti.data.editor``. Custom editor (e.g., preprocessing) can be implement by using ``iti.data,editor.Editor`` as base class and implementing the call function.
 Minor functionalities can be added by using ``iti.data,editor.LambdaEditor`` (e.g., ``LambdaEditor(lambda x: x * 2)``.
+
 ```python
-from iti.data.dataset import BaseDataset
-from iti.data.editor import LoadMapEditor, NormalizeRadiusEditor, RemoveOffLimbEditor, MapToDataEditor, NanEditor, \
-    NormalizeEditor, ReshapeEditor
+from itipy.data.dataset import BaseDataset
+from itipy.data.editor import LoadMapEditor, NormalizeRadiusEditor, RemoveOffLimbEditor, MapToDataEditor, NanEditor,
+
+NormalizeEditor, ReshapeEditor
 from astropy.visualization import ImageNormalize, LinearStretch
+
 
 class HMIDataset(BaseDataset):
 
@@ -104,9 +102,9 @@ translation when the InstanceNormalization weights are fixed (after 100 000 iter
 The use of learned parameters of the InstanceNormalization is required for the training with image patches.
 
 ```python
-from iti.data.dataset import SDODataset, SOHODataset
-from iti.train.model import DiscriminatorMode
-from iti.trainer import Trainer
+from itipy.data.dataset import SDODataset, SOHODataset
+from itipy.train.model import DiscriminatorMode
+from itipy.trainer import Trainer
 
 base_dir = ""
 sdo_data_path = ""

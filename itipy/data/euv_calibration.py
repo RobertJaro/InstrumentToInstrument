@@ -8,7 +8,7 @@ import pandas as pd
 from dateutil.parser import parse
 from tqdm import tqdm
 
-from iti.data.editor import LoadMapEditor, NormalizeRadiusEditor, MapToDataEditor, EITCheckEditor, RemoveOffLimbEditor, \
+from itipy.data.editor import LoadMapEditor, NormalizeRadiusEditor, MapToDataEditor, EITCheckEditor, RemoveOffLimbEditor, \
     AIAPrepEditor, SECCHIPrepEditor
 
 parser = argparse.ArgumentParser(description='Estimate the mean and std of SOHO, STEREO and SDO for calibration.')
