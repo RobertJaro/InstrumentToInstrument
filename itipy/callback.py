@@ -26,6 +26,7 @@ class BasicPlot(pl.Callback):
             dpi (int): Dots per inch.
             batch_size (int): Batch size.
         """
+
     def __init__(self, data, model: Trainer, plot_id, plot_settings, dpi=100, batch_size=None, **kwargs):
         self.data = data
         self.model = model
