@@ -1,7 +1,7 @@
 from astropy.visualization import ImageNormalize, LinearStretch
 
-from iti.data.dataset import BaseDataset
-from iti.data.editor import LoadMapEditor, NormalizeRadiusEditor, RemoveOffLimbEditor, MapToDataEditor, NanEditor, \
+from itipy.data.dataset import BaseDataset
+from itipy.data.editor import LoadMapEditor, NormalizeRadiusEditor, RemoveOffLimbEditor, MapToDataEditor, NanEditor, \
     NormalizeEditor, ReshapeEditor
 
 
