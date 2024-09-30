@@ -1,7 +1,7 @@
 import os
+from contextlib import closing
 from multiprocessing.pool import Pool
 from pathlib import Path
-from typing import List, Tuple
 from urllib import request
 
 import astropy.units as u
@@ -10,13 +10,26 @@ import torch
 from skimage.util import view_as_blocks
 from sunpy.map import Map, make_fitswcs_header, all_coordinates_from_map
 
-from itipy.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset
-from itipy.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor
+from itipy.data.dataset import SOHODataset, HMIContinuumDataset, STEREODataset, KSOFlatDataset, KSOFilmDataset, \
+    SWAPDataset, EUIDataset, AIADataset
+from itipy.data.editor import PaddingEditor, sdo_norms, hinode_norms, UnpaddingEditor, hri_norm
 
 
 class InstrumentToInstrument:
+    """
+    Core class for instrument to instrument translation. Either model_name or model_path need to be provided.
 
-    def __init__(self, model_name, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
+    Args:
+        model_name (str): Name of the model file.
+        model_path (str): Path to the model file.
+        device (torch.device): Device on which the model should be loaded.
+        depth_generator (int): Depth of the generator network.
+        patch_factor (int): Factor by which the image should be divided into patches.
+        n_workers (int): Number of workers for the multiprocessing pool.
+    """
+
+    def __init__(self, model_name=None, model_path=None, device=None, depth_generator=3, patch_factor=0, n_workers=4):
+        assert model_name is not None or model_path is not None, 'Either model_name or model_path must be provided.'
         self.patch_factor = patch_factor
         self.depth_generator = depth_generator
         # Load Model
@@ -30,11 +43,15 @@ class InstrumentToInstrument:
         self.device = device
         self.n_workers = n_workers
 
+    def forward(self, tensor):
+        with torch.no_grad():
+            return self.generator(tensor.to(self.device)).detach().cpu().numpy()
+
     def translate(self, *args, **kwargs):
         raise NotImplementedError()
 
     def _translateDataset(self, dataset):
-        with Pool(self.n_workers) as pool:
+        with closing(Pool(self.n_workers)) as pool:
             for img, kwargs in pool.imap(dataset.convertData, dataset.data):
                 #
                 original_shape = img.shape
@@ -64,6 +81,7 @@ class InstrumentToInstrument:
                 # use last meta data as reference for additional observables
                 ref_meta += [ref_meta[-1]] * (len(iti_img) - len(ref_meta))
                 #
+                # for synthesis of channel information: 4 --> 5 channels (create proper meta data)
                 ref_img = img.tolist()
                 ref_img += [ref_img[-1]] * (len(iti_img) - len(ref_img))  # extend list
                 ref_img = np.array(ref_img)
@@ -137,20 +155,13 @@ class InstrumentToInstrument:
         return new_meta
 
 
-class InstrumentConverter:
-
-    def _convertDataset(self, *datasets, n_workers=4) -> Tuple[np.ndarray, List]:
-        images = []
-        metas = []
-        with Pool(n_workers) as pool:
-            for data_sample in zip(*[pool.imap(ds.convertData, ds.data) for ds in datasets]):
-                #
-                images += [d for d, kwargs in data_sample]
-                metas += [kwargs for d, kwargs in data_sample]
-        return np.concatenate(images), metas
-
-
 class SOHOToSDO(InstrumentToInstrument):
+    """
+    SOHO to SDO translation of EUV and magnetogram observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='soho_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -174,6 +185,12 @@ class SOHOToSDO(InstrumentToInstrument):
 
 
 class SOHOToSDOEUV(SOHOToSDO):
+    """
+    SOHO to SDO translation of EUV observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='soho_to_sdo_euv_v0_1.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -187,13 +204,19 @@ class SOHOToSDOEUV(SOHOToSDO):
 
 
 class STEREOToSDO(InstrumentToInstrument):
+    """
+    STEREO to SDO translation of EUV observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='stereo_to_sdo_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
     def translate(self, path, basenames=None, return_arrays=False):
-        soho_dataset = STEREODataset(path, basenames=basenames)
-        for result, inputs, outputs in self._translateDataset(soho_dataset):
+        stereo_dataset = STEREODataset(path, basenames=basenames)
+        for result, inputs, outputs in self._translateDataset(stereo_dataset):
             norms = [sdo_norms[171], sdo_norms[193], sdo_norms[211], sdo_norms[304]]
             result = [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instrument, wl))
                       for s_map, norm, instrument, wl in
@@ -214,6 +237,12 @@ class STEREOToSDO(InstrumentToInstrument):
 
 
 class STEREOToSDOMagnetogram(InstrumentToInstrument):
+    """
+    STEREO to SDO magnetogram translation
+
+    Args:
+        model_name (str): Name of the model file.
+    """
 
     def __init__(self, model_name='stereo_to_sdo_mag_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
@@ -249,11 +278,19 @@ class STEREOToSDOMagnetogram(InstrumentToInstrument):
 
 
 class KSOLowToHigh(InstrumentToInstrument):
+    """
+    KSO image enhancement translation.
+
+    Args:
+        model_name (str): Name of the model file.
+        resolution (int): Resolution of the images.
+    """
+
     def __init__(self, model_name='kso_low_to_high_v0_2.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
 
-    def translate(self, paths, return_arrays=False, **kwargs):
+    def translate(self, paths, return_arrays=True, **kwargs):
         ds = KSOFlatDataset(paths, self.resolution, **kwargs)
         for result, inputs, outputs in self._translateDataset(ds):
             if return_arrays:
@@ -263,6 +300,14 @@ class KSOLowToHigh(InstrumentToInstrument):
 
 
 class KSOFilmToCCD(InstrumentToInstrument):
+    """
+    KSO film to CCD translation.
+
+    Args:
+        model_name (str): Name of the model file.
+        resolution (int): Resolution of the images.
+    """
+
     def __init__(self, model_name='kso_film_to_ccd_v0_1.pt', resolution=512, **kwargs):
         super().__init__(model_name, **kwargs)
         self.resolution = resolution
@@ -277,6 +322,13 @@ class KSOFilmToCCD(InstrumentToInstrument):
 
 
 class HMIToHinode(InstrumentToInstrument):
+    """
+    SDO HMI to Hinode translation.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
+
     def __init__(self, model_name='hmi_to_hinode_v0_2.pt', **kwargs):
         super().__init__(model_name, **kwargs)
 
@@ -288,12 +340,78 @@ class HMIToHinode(InstrumentToInstrument):
             yield s_map
 
 
-class KSOFlatConverter(InstrumentConverter):
+class SWAPToAIA(InstrumentToInstrument):
+    """
+    PROBA2 SWAP to SDO AIA translation for image enhancement.
 
-    def __init__(self, resolution, **kwargs):
-        super().__init__(**kwargs)
-        self.resolution = resolution
+    Args:
+        model_name (str): Name of the model file.
+    """
 
-    def convert(self, paths):
-        ds = KSOFlatDataset(paths, self.resolution)
-        return self._convertDataset(ds)
+    def __init__(self, model_name='swap_to_aia_v0_2.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+
+    def translate(self, paths):
+        ds = SWAPDataset(paths)
+        for s_map, input, output in self._translateDataset(ds):
+            norm = sdo_norms[171]
+            s_map = Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, 'AIA'))
+            yield s_map
+
+    def toSDOMeta(self, meta, instrument):
+        wl_map = {174: 171}
+        new_meta = meta.copy()
+        new_meta['obsrvtry'] = 'SWAP-to-AIA'
+        new_meta['telescop'] = 'sdo'
+        new_meta['instrume'] = instrument
+        new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
+        new_meta['waveunit'] = 'angstrom'
+        return new_meta
+
+
+class SolarOrbiterToSDO(InstrumentToInstrument):
+    """
+    Solar Orbiter FSI to SDO AIA translation for instrument intercalibration.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
+
+    def __init__(self, model_name='fsi_to_aia_v0_3.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+        self.norms = [sdo_norms[171], sdo_norms[304]]
+
+    def translate(self, path, basenames=None, **kwargs):
+        eui_dataset = EUIDataset(path, basenames=basenames, **kwargs)
+        for maps, img, iti_img in self._translateDataset(eui_dataset):
+            yield [Map(norm.inverse((s_map.data + 1) / 2), self.toSDOMeta(s_map.meta, instr))
+                   for s_map, norm, instr in zip(maps, self.norms, ['AIA'] * 2)]
+
+    def toSDOMeta(self, meta, instrument):
+        wl_map = {174: 171, 304: 304}
+        new_meta = meta.copy()
+        new_meta['obsrvtry'] = 'FSI-to-AIA'
+        new_meta['telescop'] = 'sdo'
+        new_meta['instrume'] = instrument
+        new_meta['WAVELNTH'] = wl_map[meta.get('WAVELNTH', 0)]
+        new_meta['waveunit'] = 'angstrom'
+        return new_meta
+
+
+class SDOToSolarOrbiter(InstrumentToInstrument):
+    """
+    SDO AIA to Solar Orbiter HRI translation to obtain super-resolution observations.
+
+    Args:
+        model_name (str): Name of the model file.
+    """
+
+    def __init__(self, model_name='aia_to_hri_v0_1.pt', **kwargs):
+        super().__init__(model_name, **kwargs)
+
+    def translate(self, paths):
+        ds = AIADataset(paths, wavelength=171)
+        for s_map, input, output in self._translateDataset(ds):
+            norm = hri_norm[174]
+            s_map = Map(norm.inverse((s_map.data + 1) / 2), s_map.meta)
+            yield s_map

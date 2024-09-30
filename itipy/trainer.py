@@ -6,6 +6,7 @@ from random import randint
 import numpy as np
 import torch
 import torch.nn.functional as F
+from lightning import LightningModule
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import InstanceNorm2d
@@ -13,8 +14,34 @@ from torch.utils.data import DataLoader
 
 from itipy.train.model import GeneratorAB, GeneratorBA, Discriminator, NoiseEstimator, DiscriminatorMode
 
+class Trainer(LightningModule):
+    """
+    Trainer class for the ITI model.
 
-class Trainer(nn.Module):
+    Args:
+        input_dim_a (int): Number of channels in domain A.
+        input_dim_b (int): Number of channels in domain B.
+        upsampling (int): Upsampling factor.
+        noise_dim (int): Noise dimension.
+        n_filters (int): Number of filters.
+        activation (str): Activation function.
+        norm (str): Normalization.
+        use_batch_statistic (bool): If True, use batch statistic.
+        n_discriminators (int): Number of discriminators.
+        discriminator_mode (DiscriminatorMode): Discriminator mode.
+        depth_generator (int): Depth of the generator.
+        depth_discriminator (int): Depth of the discriminator.
+        depth_noise (int): Depth of the noise estimator.
+        skip_connections (bool): If True, use skip connections.
+        lambda_discriminator (float): Lambda discriminator.
+        lambda_reconstruction (float): Lambda reconstruction.
+        lambda_reconstruction_id (float): Lambda reconstruction identity.
+        lambda_content (float): Lambda content.
+        lambda_content_id (float): Lambda content identity.
+        lambda_diversity (float): Lambda diversity.
+        lambda_noise (float): Lambda noise.
+        learning_rate (float): Learning rate.
+    """
     def __init__(self, input_dim_a, input_dim_b, upsampling=0, noise_dim=16, n_filters=64,
                  activation='tanh', norm='in_rs_aff', use_batch_statistic=False,
                  n_discriminators=3, discriminator_mode=DiscriminatorMode.SINGLE,
@@ -385,8 +412,8 @@ class Trainer(nn.Module):
             callbacks += [ValidationHistoryCallback(self, ds_valid_A, ds_valid_B, base_dir, 1000)]
         callbacks += additional_callbacks
         # init data loaders
-        B_iterator = loop(DataLoader(ds_B, batch_size=batch_size, shuffle=True, num_workers=num_workers))
-        A_iterator = loop(DataLoader(ds_A, batch_size=batch_size, shuffle=True, num_workers=num_workers))
+        #B_iterator = loop(DataLoader(ds_B, batch_size=batch_size, shuffle=True, num_workers=num_workers))
+        #A_iterator = loop(DataLoader(ds_A, batch_size=batch_size, shuffle=True, num_workers=num_workers))
         # start update cycle
         for it in range(start_it, iterations):
             self.train()
@@ -409,12 +436,28 @@ class Trainer(nn.Module):
 
 
 def convertSet(data_set, store_path):
+    """
+    Convert the given data set to numpy files and store them in the given path.
+
+    Args:
+        data_set (Dataset): Data set to convert.
+        store_path (str): Path to store the data.
+    """
     loader = DataLoader(data_set, batch_size=1, shuffle=False, num_workers=16)
     for i, sample in enumerate(loader):
         np.save(os.path.join(store_path, '%d.npy' % i), sample[0])
 
 
 def loop(iterable):
+    """
+    Loop over the given iterable.
+
+    Args:
+        iterable: Iterable to loop over.
+
+    Yields:
+        object: Next element of the iterable.
+    """
     it = iterable.__iter__()
     #
     while True:
@@ -429,6 +472,15 @@ def loop(iterable):
 
 
 def skip_invalid(iterable):
+    """
+    Skip invalid elements of the given iterable.
+
+    Args:
+        iterable: Iterable to loop over.
+
+    Yields:
+        object: Next valid element of the iterable.
+    """
     it = iterable.__iter__()
     #
     while True:

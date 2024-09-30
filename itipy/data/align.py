@@ -9,6 +9,13 @@ from sunpy.map import Map
 
 
 def alignMaps(align_map, ref_map):
+    """
+    Aligns the input map to the reference map by cross-correlation.
+
+    Args:
+        align_map: Map to align
+        ref_map: Reference map
+    """
     simplefilter('ignore')
     original_map = align_map
     # downscale to reference map
@@ -47,9 +54,11 @@ def alignMaps(align_map, ref_map):
 def getShift(image, image_ref, reduction_block=(1, 1)):
     """
     Pixel shift between two images by cross-correlation of the subframes.
-    :param image: smaller image patch to align with the reference image
-    :param image_ref: reference image
-    :return: pixel shift between the image to the reference image
+
+    Args:
+        image: Image to align
+        image_ref: Reference image
+        reduction_block: Reduction block for downscaling
     """
     image = block_reduce(image, reduction_block, func=np.mean)
     image_ref = block_reduce(image_ref, reduction_block, func=np.mean)
@@ -67,6 +76,13 @@ def getShift(image, image_ref, reduction_block=(1, 1)):
 
 
 def correlation_coefficient(patch1, patch2):
+    """
+    Pearson correlation coefficient between two patches.
+
+    Args:
+        patch1: Patch of image 1
+        patch2: Patch of image 2
+    """
     product = np.nanmean((patch1 - np.nanmean(patch1)) * (patch2 - np.nanmean(patch2)))
     stds = np.nanstd(patch1) * np.nanstd(patch2)
     if stds == 0:
