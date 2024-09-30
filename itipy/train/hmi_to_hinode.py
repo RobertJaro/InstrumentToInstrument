@@ -1,45 +1,41 @@
 import argparse
-import logging
 import os
 from random import sample
 
-from itipy.data.editor import RandomPatchEditor
-
-from itipy.data.dataset import StorageDataset, HMIContinuumDataset, HinodeDataset
-from itipy.trainer import Trainer
-
 import pandas as pd
+import torch
+import yaml
+from lightning import Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
+
+from itipy.callback import SaveCallback, PlotBAB, PlotABA
+from itipy.data.dataset import StorageDataset, HinodeDataset, \
+    HMIContinuumDataset
+from itipy.data.data_module import ITIDataModule
+from itipy.data.editor import RandomPatchEditor
+from itipy.iti import ITIModule
 
 parser = argparse.ArgumentParser(description='Train HMI-To-Hinode translations')
-parser.add_argument('--base_dir', type=str, help='path to the results directory.')
-
-parser.add_argument('--hinode_path', type=str, help='path to the Hinode data.')
-parser.add_argument('--hinode_file_list', type=str, help='path to the Hinode file list (see pyiti.data.hinode.classify).')
-parser.add_argument('--hmi_path', type=str, help='path to the HMI data.')
-parser.add_argument('--hinode_converted_path', type=str, help='path to store the converted Hinode data.')
-parser.add_argument('--hmi_converted_path', type=str, help='path to store the converted HMI data.')
+parser.add_argument('--config', type=str, help='path to the config file.')
 
 args = parser.parse_args()
 
-base_dir = args.base_dir
-hmi_path = args.hmi_path
-hmi_converted_path = args.hmi_converted_path
-hinode_converted_path = args.hinode_converted_path
-hinode_file_list = args.hinode_file_list
+with open(args.config, "r") as stream:
+    try:
+        config = yaml.safe_load(stream)
+    except yaml.YAMLError as exc:
+        print(exc)
 
-prediction_dir = os.path.join(base_dir, 'prediction')
-os.makedirs(prediction_dir, exist_ok=True)
+base_dir = config['base_dir']
+os.makedirs(base_dir, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler("{0}/{1}.log".format(base_dir, "info_log")),
-        logging.StreamHandler()
-    ])
-
-# Init Model
-trainer = Trainer(1, 1, upsampling=2, norm='in_rs_aff', lambda_diversity=0)
-trainer.cuda()
+# Init Dataset
+data_config = config['data']
+hmi_path = data_config['A_path']
+hmi_converted_path = data_config['converted_A_path']
+hinode_file_list = data_config['B_path']
+hinode_converted_path = data_config['converted_B_path']
 
 test_months = [11, 12]
 train_months = list(range(2, 10))
@@ -72,6 +68,8 @@ hinode_train = StorageDataset(hinode_train, hinode_converted_path,
 hinode_valid = HinodeDataset(hinode_test_files)
 hinode_valid = StorageDataset(hinode_valid, hinode_converted_path, ext_editors=[RandomPatchEditor((640, 640))])
 
+data_module = ITIDataModule(hmi_train, hinode_train, hmi_valid, hinode_valid, **config['data'])
+
 plot_settings_A = [
     {"cmap": "gray", "title": "HMI Continuum", 'vmin': -1, 'vmax': 1, },
 ]
@@ -79,4 +77,33 @@ plot_settings_B = [
     {"cmap": "gray", "title": "Hinode Continuum", 'vmin': -1, 'vmax': 1},
 ]
 
-trainer.startBasicTraining(base_dir, hmi_train, hinode_train, hmi_valid, hinode_valid, plot_settings_A, plot_settings_B)
+# setup logging
+wandb_logger = WandbLogger(**config['logging'], dir=config['base_dir'])
+wandb_logger.experiment.config.update(config, allow_val_change=True)
+
+# Start training
+module = ITIModule(**config['model'])
+
+# setup save callbacks
+checkpoint_callback = ModelCheckpoint(dirpath=base_dir, save_last=True, every_n_epochs=1)
+save_callback = SaveCallback(base_dir)
+
+# setup plot callbacks
+prediction_dir = os.path.join(base_dir, 'prediction')
+os.makedirs(prediction_dir, exist_ok=True)
+plot_callbacks = []
+plot_callbacks += [
+    PlotBAB(hinode_valid.sample(4), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
+plot_callbacks += [
+    PlotABA(hmi_valid.sample(4), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
+
+n_gpus = torch.cuda.device_count()
+trainer = Trainer(max_epochs=int(config['training']['epochs']),
+                  logger=wandb_logger,
+                  devices=n_gpus if n_gpus > 0 else None,
+                  accelerator='gpu' if n_gpus >= 1 else None,
+                  strategy='dp' if n_gpus > 1 else None,  # ddp breaks memory and wandb
+                  num_sanity_val_steps=-1,
+                  callbacks=[checkpoint_callback, save_callback, *plot_callbacks], )
+
+trainer.fit(module, data_module, ckpt_path='last')

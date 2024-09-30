@@ -9,11 +9,22 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from itipy.train.model import GeneratorAB
-from itipy.trainer import skip_invalid
+from itipy.train.util import skip_invalid
+
 
 def calculate_fid_given_paths(paths, batch_size, device, dims):
-    """Calculates the FID of two paths"""
+    """
+    Calculates the FID of two paths
+
+    Args:
+        paths (tuple): Tuple containing the paths to the two datasets.
+        batch_size (int): Batch size.
+        device (torch.device): Device to use.
+        dims (int): Number of dimensions.
+
+    Returns:
+        float: FID value.
+    """
     for p in paths:
         if not os.path.exists(p):
             raise RuntimeError('Invalid path: %s' % p)
@@ -30,7 +41,21 @@ def calculate_fid_given_paths(paths, batch_size, device, dims):
 
     return fid_value
 
-def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4, scale_factor=1):
+def computeFID(base_path, dataset_A, dataset_B, model, batch_size=4, scale_factor=1):
+    """
+    Compute the FID score for the given datasets.
+
+    Args:
+        base_path (str): Base path to store the images.
+        dataset_A (Dataset): Dataset A.
+        dataset_B (Dataset): Dataset B.
+        model (GeneratorAB): Model to use.
+        batch_size (int): Batch size.
+        scale_factor (int): Scale factor.
+
+    Returns:
+        tuple: FID scores for the translation AB and A.
+    """
     path_A = os.path.join(base_path, 'A')
     path_B = os.path.join(base_path, 'B')
     path_AB = os.path.join(base_path, 'AB')
@@ -61,16 +86,25 @@ def computeFID(base_path, dataset_A, dataset_B, model:GeneratorAB, batch_size=4,
             i += 1
             saveImage(i, path_B, sample)
 
-    fid_AB = [calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_AB, dir)), batch_size, device, 2048) for dir in os.listdir(path_B)]
-    fid_A = [calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_A, dir)), batch_size, device, 2048) for dir in os.listdir(path_B)]
-    shutil.rmtree(path_A), shutil.rmtree(path_B), shutil.rmtree(path_AB) # clean up
+    fid_AB = [
+        calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_AB, dir)), batch_size, device, 2048) for
+        dir in os.listdir(path_B)]
+    fid_A = [calculate_fid_given_paths((os.path.join(path_B, dir), os.path.join(path_A, dir)), batch_size, device, 2048)
+             for dir in os.listdir(path_B)]
+    shutil.rmtree(path_A), shutil.rmtree(path_B), shutil.rmtree(path_AB)  # clean up
     return fid_AB, fid_A
 
 
 def saveImage(img_id, path, sample):
+    """
+    Save the image to the given path.
+
+    Args:
+        img_id (int): Image ID.
+        path (str): Path to store the image.
+        sample (np.ndarray): Image data.
+    """
     for c in range(sample.shape[0]):
         os.makedirs(os.path.join(path, 'channel%d' % c), exist_ok=True)
         file_path = os.path.join(path, 'channel%d' % c, '%d.jpg' % img_id)
         plt.imsave(file_path, sample[c], vmin=-1, vmax=1, cmap='gray')
-
-

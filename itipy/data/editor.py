@@ -23,11 +23,14 @@ from scipy import ndimage
 from skimage.measure import block_reduce
 from skimage.transform import pyramid_reduce
 from sunpy.coordinates import frames
+import sunpy.sun.constants
 from sunpy.map import Map, all_coordinates_from_map, header_helper
 
 
 class Editor(ABC):
-
+    """
+    Editor class for data processing
+    """
     def convert(self, data, **kwargs):
         result = self.call(data, **kwargs)
         if isinstance(result, tuple):
@@ -73,9 +76,25 @@ hinode_norms = {'continuum': ImageNormalize(vmin=0, vmax=50000, stretch=LinearSt
 
 gregor_norms = {'gband': ImageNormalize(vmin=0, vmax=1.8, stretch=LinearStretch(), clip=True)}
 
+solo_norm = {'eui-fsi174-image': ImageNormalize(vmin=0, vmax=6000, stretch=AsinhStretch(0.005), clip=True),
+             'eui-fsi304-image': ImageNormalize(vmin=0, vmax=6500, stretch=AsinhStretch(0.001), clip=True)
+             }
+proba2_norm = {174: ImageNormalize(vmin=0, vmax=8000, stretch=AsinhStretch(0.001), clip=True)}
+
+hri_norm = {174: ImageNormalize(vmin=0, vmax=8600, stretch=AsinhStretch(0.005), clip=True)}
+
 
 class LoadFITSEditor(Editor):
+    """
+    Load FITS file editor
 
+    Args:
+        map_path (str): path to the FITS file
+
+    Returns:
+        data (np.ndarray): FITS file data
+        header (dict): FITS file header
+    """
     def call(self, map_path, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # ignore warnings
@@ -87,7 +106,16 @@ class LoadFITSEditor(Editor):
 
 
 class LoadMapEditor(Editor):
+    """
+    Load SunPy Map editor
 
+    Args:
+        data (str): FITS file path
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+        path (str): file path
+    """
     def call(self, data, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -97,7 +125,16 @@ class LoadMapEditor(Editor):
 
 
 class LoadGregorGBandEditor(Editor):
+    """
+    Load GREGOR G-Band editor
 
+    Args:
+        file (str): FITS file path
+
+    Returns:
+        gregor_maps (list): list of GREGOR G-Band SunPy maps
+        path (str): file path
+    """
     def call(self, file, **kwargs):
         warnings.simplefilter("ignore")
         hdul = fits.open(file)
@@ -124,7 +161,16 @@ class LoadGregorGBandEditor(Editor):
 
 
 class SubMapEditor(Editor):
+    """
+    SubMap editor
 
+    Args:
+        coords (list): list of coordinates
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, coords):
         self.coords = coords
 
@@ -135,13 +181,31 @@ class SubMapEditor(Editor):
 
 
 class MapToDataEditor(Editor):
+    """
+    SunPy map to data editor
 
+    Args:
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        data (np.ndarray): SunPy Map data
+        header (dict): SunPy Map header
+    """
     def call(self, s_map, **kwargs):
         return s_map.data, {"header": s_map.meta}
 
 
 class AddRadialDistanceEditor(Editor):
+    """
+    Add radial distance to SunPy map editor
 
+    Args:
+        data (np.ndarray): SunPy Map data
+        header (dict): SunPy Map header
+
+    Returns:
+        data (np.ndarray): SunPy Map data with radial distance
+    """
     def call(self, data, **kwargs):
         s_map = Map(data, kwargs['header'])
         coords = all_coordinates_from_map(s_map)
@@ -151,13 +215,32 @@ class AddRadialDistanceEditor(Editor):
 
 
 class DataToMapEditor(Editor):
+    """
+    Data to SunPy Map editor
 
+    Args:
+        data (np.ndarray): SunPy Map data
+        header (dict): SunPy Map header
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def call(self, data, **kwargs):
         return Map(data[0], kwargs['header'])
 
 
 class ContrastNormalizeEditor(Editor):
+    """
+    Contrast normalization editor
 
+    Args:
+        use_median (bool): use median value
+        shift (float): shift value
+        normalization (float): normalization value
+
+    Returns:
+        data (np.ndarray): normalized data
+    """
     def __init__(self, use_median=False, shift=None, normalization=None):
         self.use_median = use_median
         self.shift = shift
@@ -177,7 +260,17 @@ class ContrastNormalizeEditor(Editor):
 
 
 class ImageNormalizeEditor(Editor):
+    """
+    Image normalization editor
 
+    Args:
+        vmin (float): minimum value
+        vmax (float): maximum value
+        stretch (astropy.visualization.stretch.Stretch): stretch function
+
+    Returns:
+        data (np.ndarray): normalized data
+    """
     def __init__(self, vmin=None, vmax=None, stretch=LinearStretch()):
         self.norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=stretch, clip=True)
 
@@ -185,9 +278,27 @@ class ImageNormalizeEditor(Editor):
         data = self.norm(data).data * 2 - 1
         return data
 
+class MapImageNormalizeEditor(Editor):
+
+    def __init__(self, vmin=None, vmax=None, stretch=LinearStretch()):
+        self.norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=stretch, clip=True)
+
+    def call(self, s_map, **kwargs):
+        data = s_map.data
+        data = self.norm(data).data * 2 - 1
+        return Map(data, s_map.meta)
 
 class NormalizeEditor(Editor):
+    """
+    Normalize data editor in range [-1, 1]
 
+    Args:
+        norm (astropy.visualization.ImageNormalize): normalization function
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): normalized data
+    """
     def __init__(self, norm):
         self.norm = norm
 
@@ -197,7 +308,16 @@ class NormalizeEditor(Editor):
 
 
 class ReshapeEditor(Editor):
+    """
+    Reshape data editor to [channel, height, width]
 
+    Args:
+        shape (tuple): shape
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): reshaped data
+    """
     def __init__(self, shape):
         self.shape = shape
 
@@ -207,7 +327,16 @@ class ReshapeEditor(Editor):
 
 
 class ExpandDimsEditor(Editor):
+    """
+    Expand dimensions editor
 
+    Args:
+        axis (int): axis
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): expanded data
+    """
     def __init__(self, axis=0):
         self.axis = axis
 
@@ -216,6 +345,16 @@ class ExpandDimsEditor(Editor):
 
 
 class NanEditor(Editor):
+    """
+    Replace NaN values editor
+
+    Args:
+        nan (float): NaN value
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): data with NaN values replaced
+    """
     def __init__(self, nan=0):
         self.nan = nan
 
@@ -225,6 +364,16 @@ class NanEditor(Editor):
 
 
 class KSOPrepEditor(Editor):
+    """
+    KSO data preparation editor
+
+    Args:
+        add_rotation (bool): add rotation
+        kso_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        kso_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, add_rotation=False):
         self.add_rotation = add_rotation
 
@@ -254,6 +403,17 @@ class KSOPrepEditor(Editor):
 
 
 class KSOFilmPrepEditor(Editor):
+    """
+    KSO film data preparation editor
+
+    Args:
+        add_rotation (bool): add rotation
+        data (np.ndarray): data
+        header (dict): header
+
+    Returns:
+        kso_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, add_rotation=False):
         self.add_rotation = add_rotation
 
@@ -277,6 +437,17 @@ class KSOFilmPrepEditor(Editor):
 
 
 class AIAPrepEditor(Editor):
+    """
+    AIA data preparation editor for instrument degradation correction
+
+    Args:
+        calibration (str): calibration
+        s_map (sunpy.map.Map): SunPy Map object
+        correction_table (pd.DataFrame): correction table
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, calibration='auto'):
         super().__init__()
         assert calibration in ['aiapy', 'auto', 'none',
@@ -301,6 +472,16 @@ class AIAPrepEditor(Editor):
 
 
 class NormalizeExposureEditor(Editor):
+    """
+    Normalize exposure time editor
+
+    Args:
+        target (astropy.units.Quantity): target exposure time
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, target=1 * u.s):
         self.target = target
         super().__init__()
@@ -313,52 +494,85 @@ class NormalizeExposureEditor(Editor):
 
 
 class NormalizeRadiusEditor(Editor):
-    def __init__(self, resolution, padding_factor=0.1, crop=True, fix_irradiance_with_distance=False, **kwargs):
+    """
+    Normalize radius editor cropping and padding the image to a fixed resolution to 1.1 solar radii
+
+    Args:
+        resolution (int): resolution
+        padding_factor (float): specify the solar radius padding factor
+        crop (bool): crop
+        rotate_north_up (bool): rotate north up
+        fix_irradiance_with_distance (bool): fix irradiance with distance
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
+    def __init__(self, resolution, padding_factor=0.1, crop=True,
+                 fix_irradiance_with_distance=False, rotate_north_up=True, **kwargs):
         self.padding_factor = padding_factor
         self.resolution = resolution
         self.crop = crop
         self.fix_irradiance_with_distance = fix_irradiance_with_distance
+        self.rotate_north_up = rotate_north_up
         super(NormalizeRadiusEditor, self).__init__(**kwargs)
 
     def call(self, s_map, **kwargs):
         warnings.simplefilter("ignore")  # ignore warnings
 
-        if self.fix_irradiance_with_distance:
-            old_meta = s_map.meta.copy()
+        original_map = s_map
+
         r_obs_pix = s_map.rsun_obs / s_map.scale[0]  # Get the solar radius in pixels
-        r_obs_pix = (1 + self.padding_factor) * r_obs_pix  # Get the size in pixels of the padded radius 
+        r_obs_pix = (1 + self.padding_factor) * r_obs_pix  # Get the size in pixels of the padded radius
         scale_factor = self.resolution / (2 * r_obs_pix.value)
         s_map = Map(np.nan_to_num(s_map.data).astype(np.float32), s_map.meta)
-        s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
+        if self.rotate_north_up:
+            s_map = s_map.rotate(recenter=True, scale=scale_factor, missing=0, order=4)
+        else:
+            s_map = s_map.rotate(angle=0*u.deg, recenter=False, scale=scale_factor, missing=0, order=4)
         if self.crop:
             arcs_frame = (self.resolution / 2) * s_map.scale[0].value
-            s_map = s_map.submap(bottom_left=SkyCoord(-arcs_frame * u.arcsec, -arcs_frame * u.arcsec, frame=s_map.coordinate_frame),
-                                 top_right=SkyCoord(arcs_frame * u.arcsec, arcs_frame * u.arcsec, frame=s_map.coordinate_frame))
+            s_map = s_map.submap(
+                bottom_left=SkyCoord(-arcs_frame * u.arcsec, -arcs_frame * u.arcsec, frame=s_map.coordinate_frame),
+                top_right=SkyCoord(arcs_frame * u.arcsec, arcs_frame * u.arcsec, frame=s_map.coordinate_frame))
             pad_x = s_map.data.shape[0] - self.resolution
             pad_y = s_map.data.shape[1] - self.resolution
             s_map = s_map.submap(bottom_left=[pad_x // 2, pad_y // 2] * u.pix,
                                  top_right=[pad_x // 2 + self.resolution - 1, pad_y // 2 + self.resolution - 1] * u.pix)
-        
+
+        # pad with zeros if the map is too small
+        if s_map.data.shape[0] < self.resolution or s_map.data.shape[1] < self.resolution:
+            data = s_map.data
+            new_data = np.zeros((self.resolution, self.resolution))
+            padding_x = (self.resolution - data.shape[0]) // 2
+            padding_y = (self.resolution - data.shape[1]) // 2
+            new_data[padding_x:padding_x + data.shape[0], padding_y:padding_y + data.shape[1]] = data
+            s_map = Map(new_data, s_map.meta)
+
         s_map.meta['r_sun'] = s_map.rsun_obs.value / s_map.meta['cdelt1']
 
         # Virtually move the instrument such that the sun occupies the expected
         # size in the current optics
         if self.fix_irradiance_with_distance:
-            # The sun is bigger, not the scaling of the detector
-            s_map.meta['rsun_obs'] = old_meta['rsun_obs']*scale_factor
-            # This means that cdelt is the same as the old one
-            s_map.meta['cdelt1'] = old_meta['cdelt1']
-            s_map.meta['cdelt2'] = old_meta['cdelt1']           
-            # But we are also closer to the sun
-            s_map.meta['dsun_obs'] = (s_map.meta['rsun_ref']/np.tan(s_map.meta['rsun_obs']*u.arcsec)).value
-            # Change intensity due to distance change
-            s_map.data[:] = s_map.data[:] * (old_meta['dsun_obs']**2)/(s_map.meta['dsun_obs']**2)
-
+            # preserve total intensity at 1 AU
+            s_map.data[:] = s_map.data * (original_map.data.sum() / s_map.data.sum()) * (original_map.dsun.to_value(u.AU) / 1)**2
+            # set radius to 1 AU
+            s_map.meta['dsun_obs'] = (1 * u.AU).to_value(u.m)
         return s_map
 
 
 class RecenterEditor(Editor):
+    """
+    Recenter editor
 
+    Args:
+        missing (int): missing value
+        order (int): order
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, missing=0, order=4, **kwargs):
         self.missing = missing
         self.order = order
@@ -369,6 +583,16 @@ class RecenterEditor(Editor):
 
 
 class ScaleEditor(Editor):
+    """
+    Rescale solar observations editor
+
+    Args:
+        arcspp (float): arcseconds per pixel
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, arcspp):
         self.arcspp = arcspp
         super(ScaleEditor, self).__init__()
@@ -384,6 +608,16 @@ class ScaleEditor(Editor):
 
 
 class SubmapSolarRadiiEditor(Editor):
+    """
+    Submap solar radii editor
+
+    Args:
+        solar_radii (int): solar radii
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, solar_radii=1):
         self.solar_radii = solar_radii
         super(SubmapSolarRadiiEditor, self).__init__()
@@ -400,7 +634,16 @@ class SubmapSolarRadiiEditor(Editor):
 
 
 class PyramidRescaleEditor(Editor):
+    """
+    Pyramid rescale editor
 
+    Args:
+        scale (int): scale
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): rescaled data
+    """
     def __init__(self, scale=2):
         self.scale = scale
 
@@ -412,7 +655,17 @@ class PyramidRescaleEditor(Editor):
 
 
 class BlockReduceEditor(Editor):
+    """
+    Block reduce (downscaling) editor
 
+    Args:
+        block_size (int): block size
+        func (function): function
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): reduced data
+    """
     def __init__(self, block_size, func=np.mean):
         self.block_size = block_size
         self.func = func
@@ -422,13 +675,31 @@ class BlockReduceEditor(Editor):
 
 
 class LoadNumpyEditor(Editor):
+    """
+    Load numpy editor
 
+    Args:
+        data (str): data
+
+    Returns:
+        data (np.ndarray): loaded data
+    """
     def call(self, data, **kwargs):
         return np.load(data)
 
 
 class StackEditor(Editor):
+    """
+    Stack editor
 
+    Args:
+        data_sets (list): list of data sets
+        idx (int): index
+
+    Returns:
+        data (np.ndarray): stacked data
+        kwargs_list (list): list of kwargs
+    """
     def __init__(self, data_sets):
         self.data_sets = data_sets
 
@@ -438,7 +709,17 @@ class StackEditor(Editor):
 
 
 class DistributeEditor(Editor):
+    """
+    Distribute editor
 
+    Args:
+        editors (list): list of editors
+        data (np.ndarray): data
+        kwargs_list (list): list of kwargs
+
+    Returns:
+        data (np.ndarray): distributed data
+    """
     def __init__(self, editors):
         self.editors = editors
 
@@ -452,7 +733,16 @@ class DistributeEditor(Editor):
 
 
 class RemoveOffLimbEditor(Editor):
+    """
+    Remove off-limb editor
 
+    Args:
+        fill_value (int): fill value
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, fill_value=0):
         self.fill_value = fill_value
 
@@ -465,7 +755,16 @@ class RemoveOffLimbEditor(Editor):
 
 
 class FeaturePatchEditor(Editor):
+    """
+    Feature patch editor
 
+    Args:
+        patch_shape (tuple): patch shape
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, patch_shape=(512, 512)):
         self.patch_shape = patch_shape
 
@@ -501,6 +800,16 @@ class FeaturePatchEditor(Editor):
 
 
 class RandomPatchEditor(Editor):
+    """
+    Random patch editor
+
+    Args:
+        patch_shape (tuple): patch shape
+        data (np.ndarray): data
+
+    Returns:
+        patch (np.ndarray): patch
+    """
     def __init__(self, patch_shape):
         self.patch_shape = patch_shape
 
@@ -517,6 +826,16 @@ class RandomPatchEditor(Editor):
 
 
 class RandomPatch3DEditor(Editor):
+    """
+    Random patch 3D editor
+
+    Args:
+        patch_shape (tuple): patch shape
+        data (np.ndarray): data
+
+    Returns:
+        patch (np.ndarray): patch
+    """
     def __init__(self, patch_shape):
         self.patch_shape = patch_shape
 
@@ -535,7 +854,17 @@ class RandomPatch3DEditor(Editor):
 
 
 class SliceEditor(Editor):
+    """
+    Slice editor
 
+    Args:
+        start (int): start
+        stop (int): stop
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): sliced data
+    """
     def __init__(self, start, stop):
         self.start = start
         self.stop = stop
@@ -545,6 +874,18 @@ class SliceEditor(Editor):
 
 
 class BrightestPixelPatchEditor(Editor):
+    """
+    Brightest pixel patch editor
+
+    Args:
+        patch_shape (tuple): patch shape
+        idx (int): index
+        random_selection (float): random selection
+        data (np.ndarray): data
+
+    Returns:
+        patch (np.ndarray): patch
+    """
     def __init__(self, patch_shape, idx=0, random_selection=0.2):
         self.patch_shape = patch_shape
         self.idx = idx
@@ -577,7 +918,15 @@ class BrightestPixelPatchEditor(Editor):
 
 
 class EITCheckEditor(Editor):
+    """
+    EIT check editor to remove missing blocks
 
+    Args:
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def call(self, s_map, **kwargs):
         assert np.all(np.logical_not(np.isnan(s_map.data))), 'Found missing block %s' % s_map.date.datetime.isoformat()
         assert 'N_MISSING_BLOCKS =    0' in s_map.meta['comment'], 'Found missing block %s: %s' % (
@@ -585,14 +934,31 @@ class EITCheckEditor(Editor):
         return s_map
 
 class SOHOFixHeaderEditor(Editor):
+    """
+    SOHO fix header editor to fix the date and preserve the solar radius
 
+    Args:
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def call(self, s_map, **kwargs):
         s_map.meta['DATE-OBS'] = s_map.meta['DATE_OBS']  # fix date
         s_map.meta['rsun_ref'] = s_map.rsun_meters.value  # preserve solar radius (SOHO fix)
         return s_map
 
 class SECCHIPrepEditor(Editor):
+    """
+    STEREO SECCHI data preparation editor to check for missing blocks and invalid resolution
 
+    Args:
+        degradation (np.ndarray): degradation
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, degradation=None):
         self.degradation_fit = np.poly1d(degradation) if degradation else False
 
@@ -610,6 +976,16 @@ class SECCHIPrepEditor(Editor):
 
 
 class PaddingEditor(Editor):
+    """
+    Padding editor
+
+    Args:
+        target_shape (tuple): target shape
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): padded data
+    """
     def __init__(self, target_shape):
         self.target_shape = target_shape
 
@@ -625,7 +1001,42 @@ class PaddingEditor(Editor):
         return np.pad(data, pad, 'constant', constant_values=np.nan)
 
 
+
+class SWAPPrepEditor(Editor):
+    """
+    SWAP data preparation editor for degradation correction and check for invalid resolution
+
+    Args:
+        degradation (np.ndarray): degradation
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
+    def __init__(self, degradation=None):
+        self.degradation_fit = np.poly1d(degradation) if degradation else False
+
+    def call(self, s_map, **kwargs):
+        assert s_map.meta['NAXIS1'] == 1024 and s_map.meta[
+            'NAXIS2'] == 1024, 'Found invalid resolution: %s' % s_map.date.datetime.isoformat()
+        if self.degradation_fit:
+            x = mdates.date2num(s_map.date.datetime)
+            correction = self.degradation_fit(x)
+            s_map = Map(s_map.data / correction, s_map.meta)
+        return s_map
+
+
 class UnpaddingEditor(Editor):
+    """
+    Unpadding editor
+
+    Args:
+        target_shape (tuple): target shape
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): unpadded data
+    """
     def __init__(self, target_shape):
         self.target_shape = target_shape
 
@@ -644,7 +1055,17 @@ class UnpaddingEditor(Editor):
 
 
 class ReductionEditor(Editor):
+    """
+    Reduction editor to reduce the data
 
+    Args:
+        reduction (int): reduction
+        data (np.ndarray): data
+        kwargs_list (list): list of kwargs
+
+    Returns:
+        data (np.ndarray): reduced data
+    """
     def call(self, data, **kwargs):
         s = data.shape
         p = kwargs['patch_shape']
@@ -662,13 +1083,30 @@ class ReductionEditor(Editor):
 
 
 class PassEditor(Editor):
+    """
+    Pass editor
 
+    Args:
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): data
+    """
     def call(self, data, **kwargs):
         return data
 
 
 class LambdaEditor(Editor):
+    """
+    Lambda editor to apply a lambda function
 
+    Args:
+        f (function): function
+        data (np.ndarray): data
+
+    Returns:
+        data (np.ndarray): data
+    """
     def __init__(self, f):
         self.f = f
 
@@ -677,7 +1115,16 @@ class LambdaEditor(Editor):
 
 
 class LimbDarkeningCorrectionEditor(Editor):
+    """
+    Limb darkening correction editor
 
+    Args:
+        limb_offset (float): limb offset
+        s_map (sunpy.map.Map): SunPy Map object
+
+    Returns:
+        s_map (sunpy.map.Map): SunPy Map object
+    """
     def __init__(self, limb_offset=0.99):
         self.limb_offset = limb_offset
 
@@ -701,6 +1148,12 @@ class LimbDarkeningCorrectionEditor(Editor):
 
 
 def get_local_correction_table():
+    """
+    Get local correction table for AIA data
+
+    Returns:
+        correction_table (pd.DataFrame): correction table
+    """
     path = os.path.join(Path.home(), 'aiapy', 'correction_table.dat')
     if os.path.exists(path):
         return get_correction_table(path)
@@ -711,6 +1164,12 @@ def get_local_correction_table():
 
 
 def get_auto_calibration_table():
+    """
+    Get auto calibration table for AIA data
+
+    Returns:
+        correction_table (pd.DataFrame): correction table
+    """
     table_path = os.path.join(Path.home(), '.iti', 'sdo_autocal_table.csv')
     os.makedirs(os.path.join(Path.home(), '.iti'), exist_ok=True)
     if not os.path.exists(table_path):

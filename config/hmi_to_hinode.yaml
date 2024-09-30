@@ -1,0 +1,22 @@
+base_dir: /beegfs/home/robert.jarolim/runs/iti/hmi_hinode_v1
+data:
+  B_path: /beegfs/home/robert.jarolim/data/ITI_converted/hinode_file_list.csv
+  converted_B_path: /beegfs/home/robert.jarolim/data/ITI_converted/hinode
+  A_path: /gpfs/gpfs0/robert.jarolim/data/iti/hmi_continuum
+  converted_A_path: /beegfs/home/robert.jarolim/data/ITI_converted/hmi
+  num_workers: 8
+  iterations_per_epoch: 1000
+  batch_size: 2
+model:
+  input_dim_a: 1
+  input_dim_b: 1
+  upsampling: 2
+  discriminator_mode: SINGLE
+  lambda_diversity: 0
+  norm: in_rs_aff
+  use_batch_statistic: False
+logging:
+  project: ITI
+  name: HMI-To-Hinode
+training:
+  epochs: 100
