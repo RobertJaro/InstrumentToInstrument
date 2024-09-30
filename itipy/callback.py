@@ -1,4 +1,6 @@
+import logging
 import os
+from abc import ABC, abstractmethod
 
 import numpy as np
 import lightning as pl
@@ -6,23 +8,25 @@ import torch
 import wandb
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from itipy.trainer import Trainer
 
 from itipy.iti import ITIModule
 
-
 class BasicPlot(pl.Callback):
     """
-    Basic plot callback for visualization of the data and the model predictions.
+        Basic plot callback for visualization of the data and the model predictions.
 
-    Args:
-        data (Dataset): Data to visualize.
-        model (ITIModule): Model to use.
-        plot_id (str): Plot id.
-        plot_settings (list): List of plot settings.
-        dpi (int): Dots per inch.
-        batch_size (int): Batch size.
-    """
-    def __init__(self, data, model: ITIModule, plot_id, plot_settings, dpi=100, batch_size=None, **kwargs):
+        Args:
+            data (Dataset): Data to visualize.
+            model (ITIModule): Model to use.
+            plot_id (str): Plot id.
+            plot_settings (list): List of plot settings.
+            dpi (int): Dots per inch.
+            batch_size (int): Batch size.
+        """
+    def __init__(self, data, model: Trainer, plot_id, plot_settings, dpi=100, batch_size=None, **kwargs):
         self.data = data
         self.model = model
         self.plot_settings = plot_settings
@@ -62,7 +66,7 @@ class BasicPlot(pl.Callback):
                 data += [data_batch.detach().cpu().numpy()]
                 predictions += [[pred.detach().cpu().numpy() for pred in predictions_batch]]
             data = np.concatenate(data)
-            predictions = map(list, zip(*predictions))  # transpose
+            predictions = map(list, zip(*predictions)) # transpose
             predictions = [np.concatenate(p) for p in predictions]
             samples = [data, ] + [*predictions]
             # separate into rows and columns
@@ -97,7 +101,7 @@ class PlotABA(BasicPlot):
 
         plot_settings = [*plot_settings_A, *plot_settings_B, *plot_settings_A]
 
-        super().__init__(data, model, plot_id, plot_settings, **kwargs)
+        super().__init__(data, model, path, plot_id, plot_settings, **kwargs)
 
     def predict(self, x):
         x_ab, x_aba = self.model.forwardABA(x)
@@ -133,7 +137,7 @@ class PlotBAB(BasicPlot):
 
         plot_settings = [*plot_settings_B, *plot_settings_A, *plot_settings_B]
 
-        super().__init__(data, model, plot_id, plot_settings, **kwargs)
+        super().__init__(data, model, path, plot_id, plot_settings, **kwargs)
 
     def predict(self, x):
         x_ba, x_bab = self.model.forwardBAB(x)
@@ -164,7 +168,7 @@ class PlotAB(BasicPlot):
 
         plot_settings = [*plot_settings_A, *plot_settings_B]
 
-        super().__init__(data, model, plot_id, plot_settings, **kwargs)
+        super().__init__(data, model, path, plot_id, plot_settings, **kwargs)
 
     def predict(self, input_data):
         x_ab = self.model.forwardAB(input_data)
