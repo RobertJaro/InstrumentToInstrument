@@ -4,8 +4,6 @@ import collections.abc
 import shutil
 
 import sys
-# TODO: Fix path
-sys.path.append("/home/anna.jungbluth/InstrumentToInstrument/")
 #hyper needs the four following aliases to be done manually.
 collections.Iterable = collections.abc.Iterable
 collections.Mapping = collections.abc.Mapping
@@ -20,17 +18,18 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 #from lightning.pytorch.strategies import DataParallelStrategy
 
-from iti.data.geo_datasets import GeoDataset
-from iti.data.geo_editor import BandSelectionEditor, NanMaskEditor, CoordNormEditor, NanDictEditor, RadUnitEditor, ToTensorEditor, StackDictEditor, MeanStdNormEditor
-from iti.data.editor import RandomPatchEditor
-from iti.data.geo_utils import get_split, get_list_filenames, normalize
+import autoroot
+from itipy.data.geo_datasets import GeoDataset
+from itipy.data.geo_editor import BandSelectionEditor, NanMaskEditor, CoordNormEditor, NanDictEditor, RadUnitEditor, ToTensorEditor, StackDictEditor, MeanStdNormEditor
+from itipy.data.editor import RandomPatchEditor
+from itipy.data.geo_utils import get_split, get_list_filenames, normalize
 
 import warnings
 warnings.filterwarnings('ignore')
 
-from iti.callback import SaveCallback, PlotBAB, PlotABA
-from iti.data.dataset import ITIDataModule
-from iti.iti import ITIModule
+from itipy.callback import SaveCallback, PlotBAB, PlotABA
+from itipy.data.data_module import ITIDataModule
+from itipy.iti import ITIModule
 
 from datetime import datetime
 
@@ -64,12 +63,13 @@ data_config = config['data']
 msg_path = data_config['A_path']
 goes_path = data_config['B_path']
 
-
+# TODO: Update this
 splits_dict = { 
-    "train": {"years": [2020], "months": [10], "days": list(range(1,20))},
-    "val": {"years": [2020], "months": [10], "days": list(range(20,32))},
+    "train": {"years": [2020], "months": [10], "days": list(range(1,2))},
+    "val": {"years": [2020], "months": [10], "days": list(range(20,21))},
 }
 
+# TODO: Update this
 norm_config = config['normalization']
 norm_ok = False
 if 'norm_dir' in norm_config:
@@ -200,6 +200,7 @@ os.makedirs(checkpoint_dir, exist_ok=True)
 checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_dir, save_last=True, every_n_epochs=1, save_weights_only=False)
 save_callback = SaveCallback(checkpoint_dir)
 
+logger.debug(f"Setting up plot callbacks...")
 # setup plot callbacks
 plot_callbacks = []
 
@@ -209,6 +210,7 @@ plot_settings_B = {"cmap": "viridis", "title": "GOES-16"} #, 'vmin': -1, 'vmax':
 plot_callbacks += [PlotBAB(goes_valid.sample(1), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
 plot_callbacks += [PlotABA(msg_valid.sample(1), module, plot_settings_A=plot_settings_A, plot_settings_B=plot_settings_B)]
 
+logger.debug("counting devices...")
 n_gpus = torch.cuda.device_count()
 n_cpus = os.cpu_count()
 

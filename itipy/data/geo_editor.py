@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 
-from iti.data.editor import Editor
-from iti.data.geo_utils import convert_units
+from itipy.data.editor import Editor
+from itipy.data.geo_utils import convert_units
 
 class BandOrderEditor(Editor):
     """

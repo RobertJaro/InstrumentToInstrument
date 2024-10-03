@@ -13,11 +13,10 @@ import numpy as np
 import xarray as xr
 from typing import List, Union, Dict
 
-from iti.data.editor import Editor
-from iti.data.dataset import BaseDataset
-from iti.data.geo_utils import get_split, get_list_filenames
+from itipy.data.editor import Editor
+from itipy.data.dataset import BaseDataset
+from itipy.data.geo_utils import get_split, get_list_filenames
 
-# TODO: To be moved into ITI repo
 class GeoDataset(BaseDataset):
     def __init__(
         self,

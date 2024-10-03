@@ -1,11 +1,12 @@
-base_dir: /home/anna.jungbluth/outputs/miniset/
+base_dir: /home/anna.jungbluth/outputs/testing
 data:
-  A_path: /mnt/disks/data/miniset/msg/geoprocessed
+  A_path: /mnt/disks/msg-data/msg/
   # converted_A_path:
-  B_path: /mnt/disks/data/miniset/goes16/geoprocessed
+  B_path: /mnt/disks/goes-data/goes/
   # converted_B_path: 
   num_workers: 4
-  iterations_per_epoch: 1000
+  # iterations_per_epoch: 1000
+  iterations_per_epoch: 10
 model:
   input_dim_a: 5 #11
   input_dim_b: 5 #16
@@ -19,12 +20,11 @@ logging:
   # wandb_project: ITI
   # wandb_name: MSG-to-GOES
   # wandb_id: null
-  wandb_entity: iti-experiments
-  wandb_project: msg-goes-miniset
-  wandb_name: first_normalised_training
-  wandb_id: null
+  wandb_entity: itieo
+  wandb_project: msg-to-goes-debug
+  wandb_name: debug
+  # wandb_id: 
 training:
-  epochs: 10
+  epochs: 1
 normalization: 
-  # norm_dir: null
-  norm_dir: /home/anna.jungbluth/outputs/miniset/20240520-1056/normalization/
+  norm_dir: /home/anna.jungbluth/normalization
