@@ -102,7 +102,7 @@ class PlotABA(BasicPlot):
 
         plot_settings = [*plot_settings_A, *plot_settings_B, *plot_settings_A]
 
-        super().__init__(data, model, path, plot_id, plot_settings, **kwargs)
+        super().__init__(data, model, plot_id, plot_settings, **kwargs)
 
     def predict(self, x):
         x_ab, x_aba = self.model.forwardABA(x)
@@ -138,7 +138,7 @@ class PlotBAB(BasicPlot):
 
         plot_settings = [*plot_settings_B, *plot_settings_A, *plot_settings_B]
 
-        super().__init__(data, model, path, plot_id, plot_settings, **kwargs)
+        super().__init__(data, model, plot_id, plot_settings, **kwargs)
 
     def predict(self, x):
         x_ba, x_bab = self.model.forwardBAB(x)
@@ -169,7 +169,7 @@ class PlotAB(BasicPlot):
 
         plot_settings = [*plot_settings_A, *plot_settings_B]
 
-        super().__init__(data, model, path, plot_id, plot_settings, **kwargs)
+        super().__init__(data, model, plot_id, plot_settings, **kwargs)
 
     def predict(self, input_data):
         x_ab = self.model.forwardAB(input_data)
