@@ -1,0 +1,23 @@
+base_dir: /Proba2_to_SDO
+data:
+  B_path: /iti-testset/proba2/174
+  converted_B_path: /converted_sdo
+  A_path: /iti-testset/sdo/171
+  converted_A_path: /converted_swap
+  num_workers: 4
+  iterations_per_epoch: 10
+model:
+  input_dim_a: 1
+  input_dim_b: 1
+  upsampling: 1
+  discriminator_mode: SINGLE
+  lambda_diversity: 0
+  norm: in_rs_aff
+  use_batch_statistic: False
+logging:
+  wandb_entity: christoph-schirninger
+  wandb_project: ITI
+  wandb_name: PROBA2_to_SDO
+  wandb_id: null
+training:
+  epochs: 5

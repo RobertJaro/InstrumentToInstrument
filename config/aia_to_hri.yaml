@@ -1,0 +1,23 @@
+base_dir: /mnt/disks/data/AIA_to_HRI
+data:
+  B_path: /mnt/disks/data/EUI/sortout_distance_hri_b4
+  converted_B_path: /mnt/disks/data/converted/hri
+  A_path: /mnt/disks/data/SDO/171
+  converted_A_path: /mnt/disks/data/converted/sdo
+  num_workers: 4
+  iterations_per_epoch: 1000
+model:
+  input_dim_a: 1
+  input_dim_b: 1
+  upsampling: 2
+  discriminator_mode: SINGLE
+  lambda_diversity: 0
+  norm: in_rs_aff
+  use_batch_statistic: False
+logging:
+  wandb_entity: christoph-schirninger
+  wandb_project: ITI
+  wandb_name: FSI_to_HRI
+  wandb_id: null
+training:
+  epochs: 220000
