@@ -11,8 +11,6 @@ from dateutil.parser import parse
 from imreg_dft import similarity, transform_img_dict
 from matplotlib import pyplot as plt
 from matplotlib.cm import get_cmap
-from skimage.io import imsave
-from skimage.metrics import structural_similarity
 from sunpy.map import Map, all_coordinates_from_map
 from sunpy.map.sources import AIAMap
 from sunpy.visualization.colormaps import cm
@@ -27,7 +25,7 @@ from itipy.translate import SOHOToSDO
 base_path = "/gpfs/gpfs0/robert.jarolim/iti/soho_sdo_v6"
 soho_data_path = '/gpfs/gpfs0/robert.jarolim/data/iti/soho_iti2021_prep'
 sdo_data_path = '/gpfs/gpfs0/robert.jarolim/data/iti/sdo_comparison_iti2022'
-prediction_path = '/beegfs/home/robert.jarolim/iti_evaluation/soho_sdo'
+prediction_path = '/beegfs/home/robert.jarolim/iti_evaluation/soho_sdo_v3'
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
 translator = SOHOToSDO(model_path=os.path.join(base_path, 'generator_AB.pt'))
@@ -41,11 +39,12 @@ basenames_sdo = [[os.path.basename(f) for f in glob.glob('%s/%s/*.fits' % (sdo_d
 basenames_sdo = set(basenames_sdo[0]).intersection(*basenames_sdo[1:])
 
 dates_soho = sorted([parse(f.split('.')[0]) for f in basenames_soho])
+dates_soho = [d for d in dates_soho if d > datetime(2010, 8, 2)]
 dates_sdo = sorted([parse(f.split('.')[0]) for f in basenames_sdo])
 
 closest_dates = [(date_soho, min(dates_sdo, key=lambda x: abs(x - date_soho))) for date_soho in dates_soho]
 selected_dates = [(date_soho, date_sdo) for date_soho, date_sdo in closest_dates if
-                  np.abs(date_soho - date_sdo) < timedelta(minutes=10)]
+                  np.abs(date_soho - date_sdo) < timedelta(minutes=20)]
 
 basenames_soho = ['%s.fits' % date_soho.isoformat('T') for date_soho, date_sdo in selected_dates]
 basenames_sdo = ['%s.fits' % date_sdo.isoformat('T') for date_soho, date_sdo in selected_dates]
@@ -67,10 +66,10 @@ cmaps = [
 ]
 
 metrics = ['ssim', 'psnr', 'cc']
-eit_wavelengths = [171, 193, 211, 304, 'mag']
-aia_wavelengths = [171, 193, 211, 304, 'mag']
+eit_wavelengths = ['171', '195', '284', '304', 'mag']
+aia_wavelengths = ['171', '193', '211', '304', 'mag']
 evaluation = {
-    'sdo': {wk: {mk: [] for mk in metrics} for wk in aia_wavelengths},  # '171': {'ssim': [], 'psnr': [], 'mse': [], 'mae': []}
+    'sdo': {wk: {mk: [] for mk in metrics} for wk in aia_wavelengths},
     'soho': {wk: {mk: [] for mk in metrics} for wk in aia_wavelengths},
     'iti': {wk: {mk: [] for mk in metrics} for wk in aia_wavelengths},
 }
@@ -78,7 +77,7 @@ evaluation = {
 for soho_cube, iti_cube, sdo_cube in tqdm(zip(soho_maps, iti_maps, sdo_maps), total=len(selected_dates)):
     images = {'soho': {}, 'iti': {}, 'sdo': {}}
     date = soho_cube[0].date.datetime
-    if np.abs(soho_cube[0].date.datetime - sdo_cube[0].date.datetime) > timedelta(minutes=15):
+    if np.abs(soho_cube[0].date.datetime - sdo_cube[0].date.datetime) > timedelta(minutes=40):
         print('Invalid!', np.abs(soho_cube[0].date.datetime - sdo_cube[0].date.datetime))
         continue
     print(np.abs(soho_cube[0].date.datetime - sdo_cube[0].date.datetime))
@@ -97,8 +96,9 @@ for soho_cube, iti_cube, sdo_cube in tqdm(zip(soho_maps, iti_maps, sdo_maps), to
             r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
             # norm.vmin, norm.vmax = -2000, 2000
             s_map.data[r > 1] = norm.vmin
-        plt.imsave(dir + '/soho_%d.jpg' % s_map.wavelength.value, norm(s_map.data), cmap=cmap, vmin=0, vmax=1)
-        data = s_map.resample().data
+        plt.imsave(dir + '/soho_%d.jpg' % s_map.wavelength.value, norm(s_map.data), cmap=cmap, vmin=0, vmax=1,
+                   origin='upper')
+        data = s_map.data
         if i != 4:
             eit_mean, eit_std = eit_calibration[eit_wavelengths[i]]['mean'], eit_calibration[eit_wavelengths[i]]['std']
             aia_mean, aia_std = aia_calibration[aia_wavelengths[i]]['mean'], aia_calibration[aia_wavelengths[i]]['std']
@@ -118,7 +118,8 @@ for soho_cube, iti_cube, sdo_cube in tqdm(zip(soho_maps, iti_maps, sdo_maps), to
             r = np.sqrt(hpc_coords.Tx ** 2 + hpc_coords.Ty ** 2) / s_map.rsun_obs
             # norm.vmin, norm.vmax = -2000, 2000
             s_map.data[r > 1] = norm.vmin
-        plt.imsave(dir + '/iti_%d.jpg' % s_map.wavelength.value, norm(s_map.data), cmap=cmap, vmin=0, vmax=1)
+        plt.imsave(dir + '/iti_%d.jpg' % s_map.wavelength.value, norm(s_map.data), cmap=cmap, vmin=0, vmax=1,
+                   origin='upper')
         data = s_map.data
         images['iti'][aia_wavelengths[i]] = data
     for i, (s_map, cmap, norm) in enumerate(zip(sdo_cube, cmaps,
@@ -141,17 +142,18 @@ for soho_cube, iti_cube, sdo_cube in tqdm(zip(soho_maps, iti_maps, sdo_maps), to
             # norm.vmin, norm.vmax = -2000, 2000
             print(np.nanmax(np.abs(s_map.data)))
             s_map.data[r > 1] = norm.vmin
-        plt.imsave(dir + '/sdo_%d.jpg' % s_map.wavelength.value, norm(s_map.data), cmap=cmap, vmin=0, vmax=1)
+        plt.imsave(dir + '/sdo_%d.jpg' % s_map.wavelength.value, norm(s_map.data), cmap=cmap, vmin=0, vmax=1,
+                   origin='upper')
         data = s_map.data
         images['sdo'][aia_wavelengths[i]] = data
 
     for wl in aia_wavelengths:
-        soho_img = images['soho'][wl] / sdo_norms[wl].vmax
-        iti_img = images['iti'][wl] / sdo_norms[wl].vmax
-        sdo_img = images['sdo'][wl] / sdo_norms[wl].vmax
+        soho_img = images['soho'][wl] / sdo_norms[int(wl)].vmax
+        iti_img = images['iti'][wl] / sdo_norms[int(wl)].vmax
+        sdo_img = images['sdo'][wl] / sdo_norms[int(wl)].vmax
 
         transformation = similarity(soho_img, sdo_img, numiter=20,
-                                        constraints={'scale': (1, 0), 'angle': (0, 60)})
+                                    constraints={'scale': (1, 0), 'angle': (0, 60)})
         sdo_img = transform_img_dict(sdo_img, transformation, bgval=0, order=3)
 
         soho_psnr = psnr(soho_img, sdo_img)
@@ -170,6 +172,3 @@ for soho_cube, iti_cube, sdo_cube in tqdm(zip(soho_maps, iti_maps, sdo_maps), to
 
         print('SOHO %d: PSNR: %.2f, CC: %.2f, SSIM: %.2f' % (wl, soho_psnr, soho_cc, soho_ssim))
         print('ITI %d: PSNR: %.2f, CC: %.2f, SSIM: %.2f' % (wl, iti_psnr, iti_cc, iti_ssim))
-
-
-

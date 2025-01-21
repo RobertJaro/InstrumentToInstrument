@@ -1,7 +1,7 @@
 import argparse
 import glob
 import os
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 import numpy as np
 import pandas as pd
@@ -11,9 +11,8 @@ from astropy.coordinates import SkyCoord
 from dateutil.parser import parse
 from imreg_dft import similarity, transform_img_dict
 from matplotlib import pyplot as plt
-from scipy.signal import correlate2d
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from skimage import restoration
-from skimage.metrics import structural_similarity
 from skimage.transform import resize
 from sunpy.map import Map
 from tqdm import tqdm
@@ -21,7 +20,7 @@ from tqdm import tqdm
 from itipy.data.editor import sdo_norms, hinode_norms
 from itipy.data.sdo.hmi_psf import load_psf
 from itipy.evaluation.compute_fid import calculate_fid_given_paths
-from itipy.evaluation.metrics import normalize, calibrate, ssim, psnr, rms_contrast, mae, rms_contrast_diff, \
+from itipy.evaluation.metrics import normalize, ssim, psnr, mae, rms_contrast_diff, \
     image_correlation
 from itipy.translate import HMIToHinode
 
@@ -32,9 +31,6 @@ parser.add_argument('--hmi_data', type=str, help='Path to HMI data directory.')
 parser.add_argument('--model_path', type=str, help='Path to model file.')
 
 args = parser.parse_args()
-
-
-
 
 # Functions
 evaluation_path = args.out_path
@@ -64,7 +60,6 @@ invalid_matchings = [
     'FG20151217_225841.3.fits',
     # new entries
     'FG20141107_102701.3.fits_coord.jpg',
-
 
 ]
 
@@ -98,7 +93,7 @@ use_iti_registration = [
     'FG20141219_195749.0.fits',
 ]
 
-exclude = invalid_matchings #+ use_iti_registration
+exclude = invalid_matchings  # + use_iti_registration
 
 hinode_paths = np.array([f for f in test_df.file if os.path.basename(f) not in exclude])
 hinode_dates = [Map(f).date.datetime for f in hinode_paths]
@@ -120,7 +115,7 @@ translator = HMIToHinode(model_path=args.model_path)
 hinode_maps = (Map(path) for path in hinode_paths)
 hmi_maps = (Map(path) for path in hmi_paths)
 
-mean_hmi, std_hmi = (44843.92, 9413.19)#(50392.45138124471, 9476.657264909856)
+mean_hmi, std_hmi = (44843.92, 9413.19)  # (50392.45138124471, 9476.657264909856)
 mean_hinode, std_hinode = (31149.955, 5273.3335)
 
 hmi_norm = sdo_norms['continuum']
@@ -130,7 +125,7 @@ psf = load_psf()
 evaluation = {
     'iti': {'ssim': [], 'psnr': [], 'mae': [], 'rmsc': [], 'cc': []},
     'hmi': {'ssim': [], 'psnr': [], 'mae': [], 'rmsc': [], 'cc': []}
-              }
+}
 
 for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode_maps, hinode_paths)),
                                                   total=len(hinode_paths)):
@@ -151,7 +146,8 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
 
     # crop Hinode data to 256x256
     crop = 256  # (min(hinode_map.data.shape) & -8) // 2 # find largest crop
-    center_pix = hinode_map.world_to_pixel(SkyCoord(hinode_center.Tx, hinode_center.Ty, frame=hinode_map.coordinate_frame))
+    center_pix = hinode_map.world_to_pixel(
+        SkyCoord(hinode_center.Tx, hinode_center.Ty, frame=hinode_map.coordinate_frame))
     c_y, c_x = int(np.ceil(center_pix.y.value)), int(np.ceil(center_pix.x.value))
     hinode_data = hinode_map.data[c_y - crop: c_y + crop, c_x - crop:c_x + crop]
     hinode_data = hinode_data / hinode_map.exposure_time.to(u.s).value
@@ -174,10 +170,13 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
 
     # deconvolve
     hmi_data = (hmi_data - mean_hmi) / std_hmi * std_hinode + mean_hinode
+    original_hmi_data = hmi_data.copy()
     hmi_data = restoration.richardson_lucy(hmi_data, psf, clip=False)
     hmi_data = hmi_data[pad:-pad, pad:-pad] if pad > 0 else hmi_data
+    original_hmi_data = original_hmi_data[pad:-pad, pad:-pad] if pad > 0 else original_hmi_data
     # upsampling by 2
     hmi_data = resize(hmi_data, (crop * 2, crop * 2), order=3)
+    original_hmi_data = resize(original_hmi_data, (crop * 2, crop * 2), order=3)
 
     normalized_iti_data = normalize(iti_data)
     normalized_hmi_data = normalize(hmi_data)
@@ -197,10 +196,12 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
     hinode_registered_iti = transform_img_dict(hinode_data, transformation_iti, bgval=0, order=3)
 
     hmi_data, iti_data = hmi_data[80:-80, 80:-80], iti_data[80:-80, 80:-80]
-    hinode_registered_hmi, hinode_registered_iti = hinode_registered_hmi[80:-80, 80:-80], hinode_registered_iti[80:-80, 80:-80]
+    hinode_registered_hmi, hinode_registered_iti = hinode_registered_hmi[80:-80, 80:-80], hinode_registered_iti[80:-80,
+                                                                                          80:-80]
+    original_hmi_data = original_hmi_data[80:-80, 80:-80]
 
     fig, axs = plt.subplots(1, 4, figsize=(16, 4))
-    extent = (0, hinode_data.shape[0] * 0.6, 0, hinode_data.shape[1] * 0.6)
+    extent = (0, hinode_data.shape[0] * 0.15, 0, hinode_data.shape[1] * 0.15)
     axs[0].imshow(hinode_registered_iti, cmap='gray', vmin=0, vmax=5e4, extent=extent)
     axs[0].set_title('Hinode - ITI registered')
     axs[1].imshow(hinode_registered_hmi, cmap='gray', vmin=0, vmax=5e4, extent=extent)
@@ -215,6 +216,67 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
     fig.savefig(os.path.join(evaluation_path, '%s_coord.jpg' % os.path.basename(hinode_path)))
     plt.close(fig)
 
+    hmi_diff = np.abs(hmi_data - hinode_registered_hmi) / 5e4 * 100
+    iti_diff = np.abs(iti_data - hinode_registered_iti) / 5e4 * 100
+
+    fig, axs = plt.subplots(1, 6, figsize=(15, 3))
+    extent = (0, hinode_data.shape[0] * 0.15, 0, hinode_data.shape[1] * 0.15)
+    im = axs[0].imshow(original_hmi_data, cmap='gray', vmin=0, vmax=5e4, extent=extent)
+    divider = make_axes_locatable(axs[0])
+    cax = divider.append_axes('top', size='5%', pad=0.05)
+    cbar = plt.colorbar(im, cax=cax, orientation='horizontal', label='HMI [DN/s]')
+    cax.xaxis.set_ticks_position('top')
+    cax.xaxis.set_label_position('top')
+    cbar.set_ticks([0, 2e4, 4e4])
+    cbar.set_ticklabels(['0', '2e4', '4e4'])
+    #
+    im = axs[1].imshow(hmi_data, cmap='gray', vmin=0, vmax=5e4, extent=extent)
+    divider = make_axes_locatable(axs[1])
+    cax = divider.append_axes('top', size='5%', pad=0.05)
+    cbar = plt.colorbar(im, cax=cax, orientation='horizontal', label='Deconvolved [DN/s]')
+    cax.xaxis.set_ticks_position('top')
+    cax.xaxis.set_label_position('top')
+    cbar.set_ticks([0, 2e4, 4e4])
+    cbar.set_ticklabels(['0', '2e4', '4e4'])
+    #
+    im = axs[2].imshow(iti_data, cmap='gray', vmin=0, vmax=5e4, extent=extent)
+    divider = make_axes_locatable(axs[2])
+    cax = divider.append_axes('top', size='5%', pad=0.05)
+    cbar = plt.colorbar(im, cax=cax, orientation='horizontal', label='ITI [DN/s]')
+    cax.xaxis.set_ticks_position('top')
+    cax.xaxis.set_label_position('top')
+    cbar.set_ticks([0, 2e4, 4e4])
+    cbar.set_ticklabels(['0', '2e4', '4e4'])
+    #
+    im = axs[3].imshow(hinode_registered_iti, cmap='gray', vmin=0, vmax=5e4, extent=extent)
+    divider = make_axes_locatable(axs[3])
+    cax = divider.append_axes('top', size='5%', pad=0.05)
+    cbar = plt.colorbar(im, cax=cax, orientation='horizontal', label='Hinode/BFI [DN/s]')
+    cax.xaxis.set_ticks_position('top')
+    cax.xaxis.set_label_position('top')
+    cbar.set_ticks([0, 2e4, 4e4])
+    cbar.set_ticklabels(['0', '2e4', '4e4'])
+    #
+    im = axs[4].imshow(hmi_diff, cmap='inferno', vmin=0, vmax=40, extent=extent)
+    divider = make_axes_locatable(axs[4])
+    cax = divider.append_axes('top', size='5%', pad=0.05)
+    cbar = plt.colorbar(im, cax=cax, orientation='horizontal', label='$\Delta$ Deconv. [%]')
+    cax.xaxis.set_ticks_position('top')
+    cax.xaxis.set_label_position('top')
+    #
+    im = axs[5].imshow(iti_diff, cmap='inferno', vmin=0, vmax=40, extent=extent)
+    divider = make_axes_locatable(axs[5])
+    cax = divider.append_axes('top', size='5%', pad=0.05)
+    cbar = plt.colorbar(im, cax=cax, orientation='horizontal', label='$\Delta$ ITI [%]')
+    cax.xaxis.set_ticks_position('top')
+    cax.xaxis.set_label_position('top')
+    #
+    [ax.set_xlabel('X [arcsec]') for ax in axs]
+    axs[0].set_ylabel('Y [arcsec]')
+    fig.tight_layout()
+    fig.savefig(os.path.join(evaluation_path, '%s_res.png' % os.path.basename(hinode_path)),
+                dpi=300, transparent=True)
+    plt.close(fig)
 
     # vmax = np.nanmax(np.abs(normalized_hmi_data - normalized_registered_hmi))
     # p = os.path.join(evaluation_path, '%s_%s.jpg')
@@ -224,7 +286,6 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
     # plt.imsave(p % (os.path.basename(hinode_path), 'hinode'), registered_iti, cmap='gray')
     # plt.imsave(p % (os.path.basename(hinode_path), 'diff_original'), np.abs(normalized_hmi_data - normalized_registered_hmi), vmin=0, vmax=vmax, cmap='inferno')
     # plt.imsave(p % (os.path.basename(hinode_path), 'diff_iti'), np.abs(normalized_iti_data - normalized_registered_iti), vmin=0, vmax=vmax, cmap='inferno')
-
 
     # vmax = np.nanmax(np.abs(normalized_hmi_data - normalized_registered_hmi))
     # fig, axs = plt.subplots(1, 6, figsize=(21, 4))
@@ -289,7 +350,6 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
     [print("ITI", k, np.mean(v)) for k, v in evaluation['iti'].items()]
     [print("HMI", k, np.mean(v)) for k, v in evaluation['hmi'].items()]
 
-
 fid_iti = calculate_fid_given_paths((hinode_evaluation_path, iti_evaluation_path), 4,
                                     'cuda', 2048)
 fid_hmi = calculate_fid_given_paths((hinode_evaluation_path, hmi_evaluation_path), 4,
@@ -299,7 +359,9 @@ with open(os.path.join(evaluation_path, 'evaluation.txt'), 'w') as f:
     print('(ssim, psnr, mae, rmsc, FID, CC)', file=f)
     print('ITI', file=f)
     print('(%f, %f, %f, %f, %f, %f)' % (
-    np.mean(evaluation['iti']['ssim']), np.mean(evaluation['iti']['psnr']), np.mean(evaluation['iti']['mae']), np.mean(evaluation['iti']['rmsc']), fid_iti, np.mean(evaluation['iti']['cc'])), file=f)
+        np.mean(evaluation['iti']['ssim']), np.mean(evaluation['iti']['psnr']), np.mean(evaluation['iti']['mae']),
+        np.mean(evaluation['iti']['rmsc']), fid_iti, np.mean(evaluation['iti']['cc'])), file=f)
     print('HMI', file=f)
     print('(%f, %f, %f, %f, %f, %f)' % (
-    np.mean(evaluation['hmi']['ssim']), np.mean(evaluation['hmi']['psnr']), np.mean(evaluation['hmi']['mae']), np.mean(evaluation['hmi']['rmsc']), fid_hmi, np.mean(evaluation['hmi']['cc'])), file=f)
+        np.mean(evaluation['hmi']['ssim']), np.mean(evaluation['hmi']['psnr']), np.mean(evaluation['hmi']['mae']),
+        np.mean(evaluation['hmi']['rmsc']), fid_hmi, np.mean(evaluation['hmi']['cc'])), file=f)

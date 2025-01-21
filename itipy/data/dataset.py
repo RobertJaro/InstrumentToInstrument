@@ -448,7 +448,7 @@ class HMIDataset(BaseDataset):
         **kwargs: Additional arguments
     """
 
-    def __init__(self, data, id, resolution=2048, ext='.fits', **kwargs):
+    def __init__(self, data, id='mag', resolution=2048, ext='.fits', **kwargs):
         norm = sdo_norms[id]
 
         editors = [LoadMapEditor(),

@@ -1,28 +1,22 @@
 import argparse
-import glob
 import os
-from datetime import timedelta, datetime
 
 import numpy as np
-import pandas as pd
 import torch
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from dateutil.parser import parse
 from imreg_dft import similarity, transform_img_dict
 from matplotlib import pyplot as plt
-from scipy.signal import correlate2d
+from matplotlib.colors import Normalize
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from skimage import restoration
-from skimage.metrics import structural_similarity
 from skimage.transform import resize
 from sunpy.map import Map
 from tqdm import tqdm
 
 from itipy.data.editor import sdo_norms, hinode_norms
 from itipy.data.sdo.hmi_psf import load_psf
-from itipy.evaluation.compute_fid import calculate_fid_given_paths
-from itipy.evaluation.metrics import normalize, calibrate, ssim, psnr, rms_contrast, mae, rms_contrast_diff, \
-    image_correlation
+from itipy.evaluation.metrics import normalize
 from itipy.translate import HMIToHinode
 
 parser = argparse.ArgumentParser(description='Plot differences between HMI and Hinode data.')
@@ -31,16 +25,12 @@ parser.add_argument('--model_path', type=str, help='Path to model file.')
 
 args = parser.parse_args()
 
-
-
-
 # Functions
 evaluation_path = args.out_path
 os.makedirs(evaluation_path, exist_ok=True)
 
 hinode_paths = np.array(['/gpfs/gpfs0/robert.jarolim/data/iti/hinode_iti2022_prep/FG20141219_223311.7.fits'])
 hmi_paths = np.array(['/gpfs/gpfs0/robert.jarolim/data/iti/hmi_hinode_comparison/2014-12-19T22:33:11.fits'])
-
 
 translator = HMIToHinode(model_path=args.model_path)
 
@@ -73,8 +63,9 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
     hmi_map = hmi_map.resample(new_dimensions)
 
     # crop Hinode data to 256x256
-    crop = 256 # (min(hinode_map.data.shape) & -8) // 2 # find largest crop
-    center_pix = hinode_map.world_to_pixel(SkyCoord(hinode_center.Tx, hinode_center.Ty, frame=hinode_map.coordinate_frame))
+    crop = 256  # (min(hinode_map.data.shape) & -8) // 2 # find largest crop
+    center_pix = hinode_map.world_to_pixel(
+        SkyCoord(hinode_center.Tx, hinode_center.Ty, frame=hinode_map.coordinate_frame))
     c_y, c_x = int(np.ceil(center_pix.y.value)), int(np.ceil(center_pix.x.value))
     hinode_data = hinode_map.data[c_y - crop: c_y + crop, c_x - crop:c_x + crop]
     hinode_data = hinode_data / hinode_map.exposure_time.to(u.s).value
@@ -97,10 +88,13 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
 
     # deconvolve
     hmi_data = (hmi_data - mean_hmi) / std_hmi * std_hinode + mean_hinode
+    original_hmi_data = hmi_data.copy()
     hmi_data = restoration.richardson_lucy(hmi_data, psf, clip=False)
     hmi_data = hmi_data[pad:-pad, pad:-pad] if pad > 0 else hmi_data
+    original_hmi_data = original_hmi_data[pad:-pad, pad:-pad] if pad > 0 else original_hmi_data
     # upsampling by 2
     hmi_data = resize(hmi_data, (crop * 2, crop * 2), order=3)
+    original_hmi_data = resize(original_hmi_data, (crop * 2, crop * 2), order=3)
 
     normalized_iti_data = normalize(iti_data)
     normalized_hmi_data = normalize(hmi_data)
@@ -116,21 +110,26 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
         continue
 
     # registrations of HMI are bad --> choose valid ITI registrations otherwise the dataset is too small
-    hinode_registered_hmi = transform_img_dict(normalized_hinode_data, transformation_iti, bgval=0, order=3)
-    hinode_registered_iti = transform_img_dict(normalized_hinode_data, transformation_iti, bgval=0, order=3)
+    hinode_registered_hmi = transform_img_dict(hinode_data, transformation_iti, bgval=0, order=3)
+    hinode_registered_iti = transform_img_dict(hinode_data, transformation_iti, bgval=0, order=3)
 
-    hmi_data, iti_data = normalized_hmi_data[80:-80, 80:-80], normalized_iti_data[80:-80, 80:-80]
-    hinode_registered_hmi, hinode_registered_iti = hinode_registered_hmi[80:-80, 80:-80], hinode_registered_iti[80:-80, 80:-80]
+    hmi_data, iti_data = hmi_data[80:-80, 80:-80], iti_data[80:-80, 80:-80]
+    hinode_registered_hmi, hinode_registered_iti = hinode_registered_hmi[80:-80, 80:-80], hinode_registered_iti[80:-80,
+                                                                                          80:-80]
+    original_hmi_data = original_hmi_data[80:-80, 80:-80]
 
-    hmi_data = normalize(hmi_data)
-    iti_data = normalize(iti_data)
-    hinode_registered_hmi = normalize(hinode_registered_hmi)
-    hinode_registered_iti = normalize(hinode_registered_iti)
+    # hmi_data = normalize(hmi_data)
+    # iti_data = normalize(iti_data)
+    # hinode_registered_hmi = normalize(hinode_registered_hmi)
+    # hinode_registered_iti = normalize(hinode_registered_iti)
 
-    hmi_diff = np.abs(hmi_data - hinode_registered_hmi)
-    iti_diff = np.abs(iti_data - hinode_registered_iti)
+    # hmi_diff = np.abs(hmi_data - hinode_registered_hmi)
+    # iti_diff = np.abs(iti_data - hinode_registered_iti)
 
-    vmax = np.nanmax(hmi_diff)
+    hmi_diff = np.abs(normalize(hmi_data) - normalize(hinode_registered_hmi))
+    iti_diff = np.abs(normalize(iti_data) - normalize(hinode_registered_iti))
+
+    vmax = np.nanmax(hmi_diff) * 100
     p = os.path.join(evaluation_path, '%s_%s.jpg')
     plt.imsave(p % (os.path.basename(hinode_path), 'deconvolved'), hmi_data, cmap='gray', vmin=0, vmax=1)
     plt.imsave(p % (os.path.basename(hinode_path), 'iti'), iti_data, cmap='gray', vmin=0, vmax=1)
@@ -148,6 +147,43 @@ for i, (hmi_map, hinode_map, hinode_path) in tqdm(enumerate(zip(hmi_maps, hinode
     cbar = plt.colorbar(im)
     cbar.set_label(label='Absolute Difference [%]', size=14)
     plt.axis('off')
-    plt.savefig(os.path.join(evaluation_path, '%s_%s.png') % (os.path.basename(hinode_path), 'colorbar'), dpi=300, transparent=True)
+    plt.savefig(os.path.join(evaluation_path, '%s_%s.png') % (os.path.basename(hinode_path), 'colorbar'), dpi=300,
+                transparent=True)
     plt.close(fig)
 
+# make combined plot
+extent = [0, hinode_data.shape[0] * hinode_map.scale[0].value,
+          0, hinode_data.shape[1] * hinode_map.scale[1].value]
+norm = Normalize(vmin=hinode_registered_iti.min(), vmax=hinode_registered_iti.max())
+fig, axs = plt.subplots(3, 2, figsize=(4.5, 6))
+
+axs[0, 0].imshow(original_hmi_data, cmap='gray', norm=norm, extent=extent)
+axs[0, 0].set_title('HMI')
+im = axs[0, 1].imshow(hinode_registered_iti, cmap='gray', norm=norm, extent=extent)
+axs[0, 1].set_title('Hinode/BFI')
+divider = make_axes_locatable(axs[0, 1])
+cax = divider.append_axes("right", size="5%", pad=0.05)
+cbar = plt.colorbar(im, cax=cax, label='Intensity [DN/s]')
+cbar.set_ticks([1e4, 2e4, 3e4])
+cbar.set_ticklabels(['1e4', '2e4', '3e4'])
+axs[1, 0].imshow(hmi_data, cmap='gray', norm=norm, extent=extent)
+axs[1, 0].set_title('Deconvolved HMI')
+im = axs[1, 1].imshow(hmi_diff * 100, cmap='inferno', vmin=0, vmax=vmax, extent=extent)
+axs[1, 1].set_title('$\Delta$ Deconvolved HMI')
+divider = make_axes_locatable(axs[1, 1])
+cax = divider.append_axes("right", size="5%", pad=0.05)
+plt.colorbar(im, cax=cax, label='Absolute Difference [%]')
+axs[2, 0].imshow(iti_data, cmap='gray', norm=norm, extent=extent)
+axs[2, 0].set_title('ITI')
+im = axs[2, 1].imshow(iti_diff * 100, cmap='inferno', vmin=0, vmax=vmax, extent=extent)
+axs[2, 1].set_title('$\Delta$ ITI')
+divider = make_axes_locatable(axs[2, 1])
+cax = divider.append_axes("right", size="5%", pad=0.05)
+plt.colorbar(im, cax=cax, label='Absolute Difference [%]')
+
+[ax.set_xticklabels([]) for ax in axs[:-1].flatten()]
+[ax.set_yticklabels([]) for ax in axs[:, 1:].flatten()]
+
+plt.tight_layout()
+plt.savefig(os.path.join(evaluation_path, '%s.png') % os.path.basename(hinode_path), dpi=300, transparent=True)
+plt.close(fig)

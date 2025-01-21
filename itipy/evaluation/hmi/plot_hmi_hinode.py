@@ -11,7 +11,7 @@ from itipy.translate import HMIToHinode
 import numpy as np
 from astropy import units as u
 
-base_path = '/gpfs/gpfs0/robert.jarolim/iti/hmi_hinode_v4'
+base_path = '/beegfs/home/robert.jarolim/iti_evaluation/hmi_hinode_v3'
 evaluation_path = os.path.join(base_path, 'plot')
 os.makedirs(evaluation_path, exist_ok=True)
 
@@ -46,6 +46,19 @@ iti_sub_map = iti_map.submap(bottom_left=bl, top_right=tr)
 plt.imsave(os.path.join(evaluation_path, 'hmi.jpg'), hmi_map.data, origin='lower', cmap='gray')
 plt.imsave(os.path.join(evaluation_path, 'iti.jpg'), iti_map.data, origin='lower', cmap='gray')
 plt.imsave(os.path.join(evaluation_path, 'hinode.jpg'), np.nan_to_num(hinode_map.data, np.nanmax(hinode_map.data)), origin='lower', cmap='gray')
+
+
+fig, ax = plt.subplots(1, 1, figsize=(12, 4))
+
+extent = [hinode_map.bottom_left_coord.Tx.value, hinode_map.top_right_coord.Tx.value,
+          hinode_map.bottom_left_coord.Ty.value, hinode_map.top_right_coord.Ty.value]
+ax.imshow(np.nan_to_num(hinode_map.data, np.nanmax(hinode_map.data)), origin='lower', cmap='gray', extent=extent)
+ax.set_xlabel('Helioprojective Longitude [arcsec]')
+ax.set_ylabel('Helioprojective Latitude [arcsec]')
+
+fig.tight_layout()
+fig.savefig(os.path.join(evaluation_path, 'hinode.png'), dpi=300, transparent=True)
+plt.close()
 
 
 plt.imsave(os.path.join(evaluation_path, 'hmi_sub.jpg'),hmi_sub_map.data, origin='lower', cmap='gray')
