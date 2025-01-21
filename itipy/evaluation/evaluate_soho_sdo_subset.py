@@ -9,10 +9,12 @@ from warnings import simplefilter
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pylab
 from astropy.coordinates import SkyCoord
 from dateutil.parser import parse
 from matplotlib.colors import Normalize
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sunpy.map import Map, all_coordinates_from_map
 from sunpy.visualization.colormaps import cm
 from tqdm import tqdm
@@ -41,6 +43,13 @@ basenames_sdo = set(basenames_sdo[0]).intersection(*basenames_sdo[1:])
 
 dates_soho = sorted([parse(f.split('.')[0]) for f in basenames_soho])
 dates_sdo = sorted([parse(f.split('.')[0]) for f in basenames_sdo])
+
+filter_dates = [datetime(2010, 5, 13, 19, 12),
+                datetime(2010, 8, 16, 12,48)]
+# find closest
+dates_soho = np.array(dates_soho)
+dates_soho_idx = [np.argmin(np.abs(dates_soho - date)) for date in filter_dates]
+dates_soho = dates_soho[dates_soho_idx]
 
 closest_dates = [(date_soho, min(dates_sdo, key=lambda x: abs(x - date_soho))) for date_soho in dates_soho]
 selected_dates = [(date_soho, date_sdo) for date_soho, date_sdo in closest_dates if
@@ -75,7 +84,7 @@ def clip(s_map):
 
 
 cmap = copy.deepcopy(cm.hmimag)
-# cmap.set_bad('black',1.)
+cmap.set_bad('black',1.)
 
 for i, (soho_cube, iti_cube, sdo_cube) in tqdm(enumerate(zip(soho_maps, iti_maps, sdo_maps)),
                                                total=len(selected_dates)):
@@ -88,23 +97,56 @@ for i, (soho_cube, iti_cube, sdo_cube) in tqdm(enumerate(zip(soho_maps, iti_maps
         continue
     simplefilter('ignore')  # ignore int conversion warning
     hmi_map = sdo_cube[-1].rotate(recenter=True, missing=0, order=4)
-    mdi_map = soho_cube[-1]  # .rotate(recenter=True, missing=0, order=4)
+    mdi_map = soho_cube[-1].rotate(recenter=True, missing=0, order=4)
     iti_map = iti_cube[-1]
     #
     hmi_map = clip(get_submap(hmi_map))
-    # mdi_map = clip(get_submap(mdi_map))
+    mdi_map = clip(get_submap(mdi_map))
     iti_map = clip(get_submap(iti_map))
     #
     lcs.append((np.nanmean(np.abs(mdi_map.data)), np.nanmean(np.abs(iti_map.data)), np.nanmean(np.abs(hmi_map.data))))
     dates.append((mdi_map.date.to_datetime(), iti_map.date.to_datetime(), hmi_map.date.to_datetime()))
     if (i + 1) % 5 == 0:
         norm = Normalize(vmin=-1500.0, vmax=1500.0)
-        plt.imsave(os.path.join(prediction_path, '%s_MDI.jpg' % date.isoformat('T')), norm(mdi_map.data), cmap=cmap,
-                   vmin=0, vmax=1, origin='lower')
-        plt.imsave(os.path.join(prediction_path, '%s_ITI.jpg' % date.isoformat('T')), norm(iti_map.data), cmap=cmap,
-                   vmin=0, vmax=1, origin='lower')
-        plt.imsave(os.path.join(prediction_path, '%s_HMI.jpg' % date.isoformat('T')), norm(hmi_map.data), cmap=cmap,
-                   vmin=0, vmax=1, origin='lower')
+        fig = plt.figure(figsize=(10, 5))
+
+        ax = plt.subplot(1, 3, 1)
+        extent = [mdi_map.bottom_left_coord.Tx.value, mdi_map.top_right_coord.Tx.value,
+                  mdi_map.bottom_left_coord.Ty.value, mdi_map.top_right_coord.Ty.value]
+        im = ax.imshow(mdi_map.data, cmap=cmap, norm=norm, origin='lower', extent=extent)
+        # ax.set_title('MDI', fontsize=14)
+        # ax.set_xlabel('Helioprojective Longitude [arcsec]')
+        # ax.set_ylabel('Helioprojective Latitude [arcsec]')
+
+        ax = plt.subplot(1, 3, 2)
+        extent = [iti_map.bottom_left_coord.Tx.value, iti_map.top_right_coord.Tx.value,
+                  iti_map.bottom_left_coord.Ty.value, iti_map.top_right_coord.Ty.value]
+        im = ax.imshow(iti_map.data, cmap=cmap, norm=norm, origin='lower', extent=extent)
+        # ax.set_title('ITI', fontsize=14)
+        # ax.set_xlabel('Helioprojective Longitude [arcsec]')
+        ax.set_ylabel(' ')
+        ax.set_yticklabels([])
+
+        ax = plt.subplot(1, 3, 3)
+        extent = [hmi_map.bottom_left_coord.Tx.value, hmi_map.top_right_coord.Tx.value,
+                  hmi_map.bottom_left_coord.Ty.value, hmi_map.top_right_coord.Ty.value]
+        im = ax.imshow(hmi_map.data, cmap=cmap, norm=norm, origin='lower', extent=extent)
+        # ax.set_title('HMI', fontsize=14)
+        # ax.set_xlabel('Helioprojective Longitude [arcsec]')
+        ax.set_ylabel(' ')
+        ax.set_yticklabels([])
+
+        plt.tight_layout()
+        fig.savefig(os.path.join(prediction_path, '%s.png' % date.isoformat('T')), dpi=300, transparent=True)
+        plt.close(fig)
+
+
+        # plt.imsave(os.path.join(prediction_path, '%s_MDI.jpg' % date.isoformat('T')), norm(mdi_map.data), cmap=cmap,
+        #            vmin=0, vmax=1, origin='lower')
+        # plt.imsave(os.path.join(prediction_path, '%s_ITI.jpg' % date.isoformat('T')), norm(iti_map.data), cmap=cmap,
+        #            vmin=0, vmax=1, origin='lower')
+        # plt.imsave(os.path.join(prediction_path, '%s_HMI.jpg' % date.isoformat('T')), norm(hmi_map.data), cmap=cmap,
+        #            vmin=0, vmax=1, origin='lower')
         gc.collect()
 
         print(mdi_map.date)
@@ -112,11 +154,24 @@ for i, (soho_cube, iti_cube, sdo_cube) in tqdm(enumerate(zip(soho_maps, iti_maps
         with open(result_pickle, 'wb') as f:
             pickle.dump({'dates': dates, 'lcs': lcs}, f)
 
+raise Exception('STOP')
+
 with open(result_pickle, 'wb') as f:
     pickle.dump({'dates': dates, 'lcs': lcs}, f)
 
+with open('/gpfs/gpfs0/robert.jarolim/iti/soho_sdo_v4/evaluation/unsigned_flux.pickle', 'rb') as f:
+    result = pickle.load(f)
+lcs = result['lcs']
+dates = result['dates']
+
 lcs_arr = np.array(lcs)
 dates_arr = np.array(dates)
+
+
+# save CSV
+df = pd.DataFrame(data=np.array([dates_arr[:, 0], dates_arr[:, 2], lcs_arr[:, 0], lcs_arr[:, 1], lcs_arr[:, 2],]).T,
+                  columns=['MDI-DATE', 'HMI-DATE', 'MDI', 'ITI', 'HMI'])
+df.to_csv(os.path.join(prediction_path, 'lcs.csv'), index=False)
 
 mae_iti = np.abs(lcs_arr[:, 1] - lcs_arr[:, 2]).mean()
 mae_mdi = np.abs(lcs_arr[:, 0] - lcs_arr[:, 2]).mean()
@@ -146,10 +201,11 @@ plt.rc('legend', fontsize='x-large')
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 4))
 ax.plot(dates_arr[:, 0], lcs_arr[:, 0], '-o', label='MDI (MAE: %0.2f; CC: %0.2f)' % (mae_mdi, cc_mdi))
-ax.plot(dates_arr[:, 1], lcs_arr[:, 1], '-o', label='ITI (MAE: %0.2f; CC: %0.2f)' % (mae_iti, cc_iti))
-ax.plot(dates_arr[:, 2], lcs_arr[:, 2], '-o', label='HMI')
-ax.legend()
+ax.plot(dates_arr[:, 1], lcs_arr[:, 1], '-*', label='ITI (MAE: %0.2f; CC: %0.2f)' % (mae_iti, cc_iti))
+ax.plot(dates_arr[:, 2], lcs_arr[:, 2], '-v', label='HMI')
+ax.legend(loc='upper right')
 ax.set_ylabel('Flux Density [Gauss]')
+ax.set_xlim([min(dates_arr[:, 0]), max(dates_arr[:, 0])])
 
 ax.axvspan(datetime(2010, 9, 13), datetime(2010, 9, 20), facecolor='b', alpha=0.3)
 

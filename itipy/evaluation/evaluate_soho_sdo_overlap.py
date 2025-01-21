@@ -1,3 +1,4 @@
+import copy
 import glob
 import os
 from datetime import timedelta, datetime
@@ -13,6 +14,7 @@ from matplotlib.colors import Normalize
 from skimage.metrics import structural_similarity
 from sunpy.map import Map, all_coordinates_from_map
 from sunpy.physics.differential_rotation import solar_rotate_coordinate
+from sunpy.visualization.colormaps import cm
 from tqdm import tqdm
 
 
@@ -28,7 +30,7 @@ base_path = "/gpfs/gpfs0/robert.jarolim/iti/soho_sdo_v4"
 soho_data_path = '/gpfs/gpfs0/robert.jarolim/data/iti/soho_iti2021_prep'
 sdo_data_path = '/gpfs/gpfs0/robert.jarolim/data/iti/sdo_comparison_iti2022'
 
-prediction_path = '/beegfs/home/robert.jarolim/iti_evaluation/soho_sdo'
+prediction_path = '/beegfs/home/robert.jarolim/iti_evaluation/soho_sdo_v3'
 os.makedirs(prediction_path, exist_ok=True)
 # create translator
 translator = SOHOToSDO(model_path=os.path.join(base_path, 'generator_AB.pt'))
@@ -115,24 +117,33 @@ params = {'axes.labelsize': 'large',
           'ytick.labelsize': 'large'}
 pylab.rcParams.update(params)
 
-fig = plt.figure(constrained_layout=True, figsize=(3 * 2, 9 * 2))
-gs = fig.add_gridspec(9,3)
+fig = plt.figure(constrained_layout=True, figsize=(8.5, 12))
+gs = fig.add_gridspec(5,3)
 
 mag_maps = np.array(maps[4])
 
-v_min_max = np.nanmax([np.nanmax(np.abs(s_map.data)) for s_map in mag_maps[:, 2]])
+cmap = copy.deepcopy(cm.hmimag)
+cmap.set_bad('black',1.)
+v_min_max = 1500#np.nanmax([np.nanmax(np.abs(s_map.data)) for s_map in mag_maps[:, 2]])
+
 print(v_min_max)
 for i, map_cube in enumerate(mag_maps):
-    ax = fig.add_subplot(gs[i, -3], projection=map_cube[0])
-    map_cube[0].plot(axes=ax, title=False, annotate=False, norm=Normalize(vmin=-v_min_max, vmax=v_min_max))
-    ax.set_axis_off()
-    ax = fig.add_subplot(gs[i, -2], projection=map_cube[1])
-    map_cube[1].plot(axes=ax, title=False, annotate=False, norm=Normalize(vmin=-v_min_max, vmax=v_min_max))
-    ax.set_axis_off()
-    ax = fig.add_subplot(gs[i, -1], projection=map_cube[2])
-    map_cube[2].plot(axes=ax, title=False, annotate=False, norm=Normalize(vmin=-v_min_max, vmax=v_min_max))
-    ax.set_axis_off()
+    ax = fig.add_subplot(gs[i, -3])
+    extent = [map_cube[0].bottom_left_coord.Tx.value, map_cube[0].top_right_coord.Tx.value,
+                map_cube[0].bottom_left_coord.Ty.value, map_cube[0].top_right_coord.Ty.value]
+    ax.imshow(map_cube[0].data, norm=Normalize(vmin=-v_min_max, vmax=v_min_max), cmap=cmap, extent=extent)
+    ax = fig.add_subplot(gs[i, -2])
+    extent = [map_cube[1].bottom_left_coord.Tx.value, map_cube[1].top_right_coord.Tx.value,
+                map_cube[1].bottom_left_coord.Ty.value, map_cube[1].top_right_coord.Ty.value]
+    ax.imshow(map_cube[1].data, norm=Normalize(vmin=-v_min_max, vmax=v_min_max), cmap=cmap, extent=extent)
+    ax = fig.add_subplot(gs[i, -1])
+    extent = [map_cube[2].bottom_left_coord.Tx.value, map_cube[2].top_right_coord.Tx.value,
+                map_cube[2].bottom_left_coord.Ty.value, map_cube[2].top_right_coord.Ty.value]
+    ax.imshow(map_cube[2].data, norm=Normalize(vmin=-v_min_max, vmax=v_min_max), cmap=cmap, extent=extent)
+    ax.set_ylabel(map_cube[0].date.datetime.strftime('%d-%H:%M'), rotation=-90, fontsize=18, labelpad=20)
+    ax.yaxis.set_label_position("right")
 
+fig.tight_layout()
 plt.savefig(os.path.join(prediction_path, 'magnetogram_series.jpg'), dpi=300)
 plt.close()
 
@@ -162,7 +173,7 @@ axs[1].set_ylabel('MAE [Gauss]')
 
 fig.autofmt_xdate()
 plt.tight_layout()
-plt.savefig(os.path.join(prediction_path, 'magnetogram_similarity.jpg'), dpi=300)
+plt.savefig(os.path.join(prediction_path, 'magnetogram_similarity.png'), dpi=300, transparent=True)
 plt.close()
 
 print('MEAN SSIM: ITI %.03f; MDI %.03f' % (np.mean(iti_ssim), np.mean(mdi_ssim)))
